@@ -213,52 +213,57 @@ class N3Tree(nn.Module):
         :param max_refine maximum number of leaves to refine.
         'max_refine' random leaves (without replacement)
         meeting the threshold are refined in case more leaves
-        satisfy it.
+        satisfy it. Leaves at lower depths are sampled exponentially
+        more often.
         """
-        filled = self.n_internal
-        resized = False
+        with torch.no_grad():
+            filled = self.n_internal
+            resized = False
 
-        good_mask = self.child[:filled] == 0
-        if thresh is not None:
-            self._push_to_leaf()
-            good_mask &= (self.data[:filled, ..., dim] >= thresh)
+            good_mask = self.child[:filled] == 0
+            if thresh is not None:
+                self._push_to_leaf()
+                good_mask &= (self.data[:filled, ..., dim] >= thresh)
 
-        good_mask = good_mask[self.parent_depth[:filled, -1] < self.depth_limit]
+            good_mask &= (self.parent_depth[:filled, -1] < self.depth_limit)[:, None, None, None]
 
-        leaf_node = good_mask.nonzero(as_tuple=False)  # NNC, 4
-        if leaf_node.shape[0] == 0:
-            # Nothing to do
-            return False
+            leaf_node = good_mask.nonzero(as_tuple=False)  # NNC, 4
+            if leaf_node.shape[0] == 0:
+                # Nothing to do
+                return False
 
-        if max_refine is not None and max_refine < leaf_node.shape[0]:
-            choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False)
-            choices = torch.from_numpy(choices).to(device=leaf_node.device)
-            leaf_node = leaf_node[choices]
+            if max_refine is not None and max_refine < leaf_node.shape[0]:
+                prob = torch.pow(1.0 / N, self.parent_depth[leaf_node[:, 0], 1])
+                choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False,
+                        p=prob)
+                choices = torch.from_numpy(choices).to(device=leaf_node.device)
+                leaf_node = leaf_node[choices]
 
-        num_nc = leaf_node.shape[0]
-        new_filled = filled + num_nc
+            leaf_node_sel = (*leaf_node.T,)
+            num_nc = leaf_node.shape[0]
+            new_filled = filled + num_nc
 
-        cap_needed = new_filled - self.capacity
-        if cap_needed > 0:
-            self._resize_add_cap(cap_needed)
-            resized = True
+            cap_needed = new_filled - self.capacity
+            if cap_needed > 0:
+                self._resize_add_cap(cap_needed)
+                resized = True
 
-        new_idxs = torch.arange(filled, filled + num_nc,
-                device=self.child.device, dtype=self.child.dtype) # NNC
+            new_idxs = torch.arange(filled, filled + num_nc,
+                    device=self.child.device, dtype=self.child.dtype) # NNC
 
-        leaf_node_sel = (*leaf_node.T,)
-        if not self.vary_non_leaf:
-            self.data[filled:new_filled] = self.data[leaf_node_sel][:, None, None, None]
+            if not self.vary_non_leaf:
+                self.data[filled:new_filled] = self.data[leaf_node_sel][:, None, None, None]
 
-        self.child[filled:new_filled] = 0
-        self.child[leaf_node_sel] = new_idxs - leaf_node[:, 0].to(torch.int32)
-        self.parent_depth[filled:new_filled, 0] = self._pack_index(leaf_node)  # parent
-        self.parent_depth[filled:new_filled, 1] = self.parent_depth[
-                leaf_node[:, 0], 1] + 1  # depth
-        self.max_depth += 1
+            self.child[filled:new_filled] = 0
+            self.child[leaf_node_sel] = new_idxs - leaf_node[:, 0].to(torch.int32)
+            self.parent_depth[filled:new_filled, 0] = self._pack_index(leaf_node)  # parent
+            self.parent_depth[filled:new_filled, 1] = self.parent_depth[
+                    leaf_node[:, 0], 1] + 1  # depth
+            self.max_depth.fill_(max(self.parent_depth[filled:new_filled, 1].max().item(),
+                    self.max_depth.item()))
 
-        self.n_internal += num_nc
-        return resized
+            self.n_internal += num_nc
+            return resized
 
     def refine_all(self, repeats=1):
         """
