@@ -186,10 +186,12 @@ class N3Tree(nn.Module):
         self.data.data[leaf_node_sel] = torch.randn_like(self.data.data[leaf_node_sel]) * std + mean
     def clamp_(self, min, max, dim=None):
         self._push_to_leaf()
-        if dim is not None:
-            self.data.data[..., dim].clamp_(min, max)
+        leaf_node = (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)  # NNC, 4
+        if dim is None:
+            leaf_node_sel = (*leaf_node.T,)
         else:
-            self.data.data.clamp_(min, max)
+            leaf_node_sel = (*leaf_node.T, torch.ones_like(leaf_node[..., 0]) * dim)
+        self.data.data[leaf_node_sel] = self.data.data[leaf_node_sel].clamp(min, max)
 
     # Leaf refinement methods
     def refine_thresh(self, dim, thresh, max_refine=None):
@@ -386,13 +388,15 @@ class N3Tree(nn.Module):
         leaf_node = (self.child[:filled] == 0).nonzero(as_tuple=False)  # NNC, 4
         curr = leaf_node.clone()
 
-        while curr.shape[0] > 0:
-            curr = self._unflatten_index(self.parent_depth[curr[:, 0], 0].long())
-            self.data.data[(*leaf_node.T,)] += self.data[(*curr.T,)]
-
+        while True:
             good_mask = curr[:, 0] != 0
+            if not good_mask.any():
+                break
             curr = curr[good_mask]
             leaf_node = leaf_node[good_mask]
+
+            curr = self._unflatten_index(self.parent_depth[curr[:, 0], 0].long())
+            self.data.data[(*leaf_node.T,)] += self.data[(*curr.T,)]
 
         with_child = self.child[:filled].nonzero(as_tuple=False)  # NNC, 4
         with_child_sel = (*with_child.T,)
