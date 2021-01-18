@@ -180,13 +180,22 @@ class N3Tree(nn.Module):
 
     # In-place modification helpers
     def randn_(self, mean=0.0, std=1.0):
+        """
+        Set all values to random normal
+        Side effect: pushes values to leaf. 
+        """
         self._push_to_leaf()
-        leaf_node = (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)  # NNC, 4
+        leaf_node = self._all_leaves()  # NNC, 4
         leaf_node_sel = (*leaf_node.T,)
         self.data.data[leaf_node_sel] = torch.randn_like(self.data.data[leaf_node_sel]) * std + mean
+
     def clamp_(self, min, max, dim=None):
+        """
+        Clamp all values to random normal
+        Side effect: pushes values to leaf. 
+        """
         self._push_to_leaf()
-        leaf_node = (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)  # NNC, 4
+        leaf_node = self._all_leaves()  # NNC, 4
         if dim is None:
             leaf_node_sel = (*leaf_node.T,)
         else:
@@ -313,7 +322,7 @@ class N3Tree(nn.Module):
         """
         Get number of leaf nodes (WARNING: slow)
         """
-        return (self.child[:self.n_internal] == 0).nonzero(as_tuple=False).shape[0]
+        return self._all_leaves().shape[0]
 
     @property
     def n_nodes(self):
@@ -328,6 +337,17 @@ class N3Tree(nn.Module):
         Get capacity (n_internal is amount taken)
         """
         return self.parent_depth.shape[0]
+
+    def values(self):
+        """
+        Get a list of all values in tree
+        Side effect: pushes values to leaf.
+        :return (n_leaves, data_dim)
+        """
+        self._push_to_leaf()
+        leaf_node = self._all_leaves()
+        leaf_node_sel = (*leaf_node.T,)
+        return self.data[leaf_node_sel]
 
     # Magic
     def __repr__(self):
@@ -386,6 +406,8 @@ class N3Tree(nn.Module):
         """
         Push tree values to leaf
         """
+        if not self.vary_non_leaf:
+            return
         filled = self.n_internal
 
         leaf_node = (self.child[:filled] == 0).nonzero(as_tuple=False)  # NNC, 4
@@ -437,3 +459,9 @@ class N3Tree(nn.Module):
         else:
             assert val_tensor.shape[-1] == self.data_dim
         return val_tensor
+
+    def _all_leaves(self):
+        """
+        Get all leaves of tree
+        """
+        return (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)
