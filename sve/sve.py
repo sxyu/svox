@@ -217,8 +217,11 @@ class N3Tree(nn.Module):
         good_mask = good_mask[self.parent_depth[:filled, -1] < self.depth_limit]
 
         leaf_node = good_mask.nonzero(as_tuple=False)  # NNC, 4
+        if leaf_node.shape[0] == 0:
+            # Nothing to do
+            return False
 
-        if max_refine is not None:
+        if max_refine is not None and max_refine < leaf_node.shape[0]:
             choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False)
             choices = torch.from_numpy(choices).to(device=leaf_node.device)
             leaf_node = leaf_node[choices]
