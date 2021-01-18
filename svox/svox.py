@@ -61,7 +61,7 @@ class _SVEQueryVerticalFunction(torch.autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, None, None, None
+        return grad_data, None, None, None, None
 
 
 class N3Tree(nn.Module):
