@@ -156,7 +156,7 @@ at::Tensor _query_vertical_cuda(
 
     const int blocks = (Q - 1) / N_THREADS + 1;
 
-    at::Tensor result = at::zeros({Q, N}, indices.options());
+    at::Tensor result = at::zeros({Q, K}, indices.options());
 
     AT_DISPATCH_FLOATING_TYPES(indices.type(), "_query_cuda_vertical", [&] {
         device::query_single_vertical<scalar_t><<<blocks, N_THREADS>>>(

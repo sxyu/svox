@@ -55,6 +55,8 @@ class N3Tree(nn.Module):
         please re-make any optimizers
         """
         super().__init__()
+        assert N >= 2
+        assert depth_limit >= 0
         self.N = N
         self.data_dim = data_dim
         self.vary_non_leaf = vary_non_leaf
@@ -186,37 +188,21 @@ class N3Tree(nn.Module):
         self._push_to_leaf()
         self.data.data.clamp_(min, max)
 
-    # Refinement methods
-    def refine_at(self, subgrid_idx, xyzi):
-        assert min(xyzi) >= 0 and max(xyzi) < self.N
-        if self.parent_depth[subgrid_idx, 1] >= self.depth_limit:
-            return
-
-        xi, yi, zi = xyzi
-        if self.child[subgrid_idx, xi, yi, zi] != 0:
-            # Already has child
-            return
-
-        resized = False
-        if self.n_internal >= self.capacity:
-            self._resize_add_cap(1)
-            resized = True
-
-        if not self.vary_non_leaf:
-            self.data[self.n_internal] = self.data[subgrid_idx, xi, yi, zi][None, None, None]
-
-        self.child[self.n_internal] = 0
-        self.child[subgrid_idx, xi, yi, zi] = self.n_internal - subgrid_idx
-        depth = self.parent_depth[subgrid_idx, 1] + 1
-        self.parent_depth[self.n_internal, 0] = self._flatten_index(torch.tensor(
-            [[subgrid_idx, xi, yi, zi]], dtype=torch.int32))[0]
-        self.parent_depth[self.n_internal, 1] = depth
-        self.max_depth = max(self.max_depth, depth.item())
-        self.n_internal += 1
-        return resized
-
+    # Leaf refinement methods
     def refine_thresh(self, dim, thresh, max_refine=None):
+        """
+        Refine each leaf node whose value at dimension 'dim' >= 'thresh'.
+        Respects depth_limit.
+        Side effect: pushes values to leaf.
+        :param dim dimension to check. Can be negative (like -1)
+        :param thresh threshold for dimension.
+        :param max_refine maximum number of leaves to refine.
+        'max_refine' random leaves (without replacement)
+        meeting the threshold are refined in case more leaves
+        satisfy it.
+        """
         filled = self.n_internal
+        resized = False
 
         good_mask = self.child[:filled] == 0
         if thresh is not None:
@@ -235,7 +221,7 @@ class N3Tree(nn.Module):
         num_nc = leaf_node.shape[0]
         new_filled = filled + num_nc
 
-        cap_needed = new_filled + 1 - self.capacity
+        cap_needed = new_filled - self.capacity
         if cap_needed > 0:
             self._resize_add_cap(cap_needed)
             resized = True
@@ -257,10 +243,61 @@ class N3Tree(nn.Module):
         return resized
 
     def refine_all(self, repeats=1):
+        """
+        Refine all leaves. Respects depth_limit
+        :param repeats number of times to repeat procedure
+        """
         resized = False
         for _ in range(repeats):
             resized = self.refine_thresh(0, None) or resized
         return resized
+
+    def refine_at(self, intnode_idx, xyzi):
+        """
+        Advanced: refine specific leaf node.
+        :param intnode_idx index of internal node for identifying leaf
+        :param xyzi tuple of size 3 with each element in {0, ... N-1}
+        in xyz orde rto identify leaf within internal node
+        """
+        assert min(xyzi) >= 0 and max(xyzi) < self.N
+        if self.parent_depth[intnode_idx, 1] >= self.depth_limit:
+            return
+
+        xi, yi, zi = xyzi
+        if self.child[intnode_idx, xi, yi, zi] != 0:
+            # Already has child
+            return
+
+        resized = False
+        if self.n_internal >= self.capacity:
+            self._resize_add_cap(1)
+            resized = True
+
+        if not self.vary_non_leaf:
+            self.data[self.n_internal] = self.data[intnode_idx, xi, yi, zi][None, None, None]
+
+        self.child[self.n_internal] = 0
+        self.child[intnode_idx, xi, yi, zi] = self.n_internal - intnode_idx
+        depth = self.parent_depth[intnode_idx, 1] + 1
+        self.parent_depth[self.n_internal, 0] = self._flatten_index(torch.tensor(
+            [[intnode_idx, xi, yi, zi]], dtype=torch.int32))[0]
+        self.parent_depth[self.n_internal, 1] = depth
+        self.max_depth = max(self.max_depth, depth.item())
+        self.n_internal += 1
+        return resized
+
+    def shrink_to_fit(self):
+        """
+        Shrink data & buffers to tightly needed fit tree data.
+        Will change the nn.Parameter size (data), breaking optimizer!
+        """
+        new_cap = self.n_internal
+        if new_cap >= self.capacity:
+            return False
+        self.data = nn.Parameter(self.data.data[:new_cap])
+        self.child.resize_(new_cap, *self.child.shape[1:])
+        self.parent_depth.resize_(new_cap, *self.parent_depth.shape[1:])
+        return True
 
     # Misc
     @property
@@ -370,6 +407,9 @@ class N3Tree(nn.Module):
         return torch.stack((flat, t[2], t[1], t[0]), dim=-1)
 
     def _resize_add_cap(self, cap_needed):
+        """
+        Helper for increasing capacity
+        """
         cap_needed = max(cap_needed, int(self.capacity * (self.geom_resize_fact - 1.0)))
         self.data = nn.Parameter(torch.cat((self.data.data,
                         torch.zeros((cap_needed, *self.data.data.shape[1:]),
