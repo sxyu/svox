@@ -233,7 +233,7 @@ class N3Tree(nn.Module):
                 return False
 
             if max_refine is not None and max_refine < leaf_node.shape[0]:
-                prob = torch.pow(1.0 / self.N, self.parent_depth[leaf_node[:, 0], 1])
+                prob = torch.pow(1.0 / (self.N ** 3), self.parent_depth[leaf_node[:, 0], 1])
                 prob = prob.cpu().numpy().astype(np.float64)
                 prob /= prob.sum()
                 choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False,
@@ -349,7 +349,7 @@ class N3Tree(nn.Module):
 
     def values(self):
         """
-        Get a list of all values in tree
+        Get a list of all leaf values in tree
         Side effect: pushes values to leaf.
         :return (n_leaves, data_dim)
         """
@@ -357,6 +357,16 @@ class N3Tree(nn.Module):
         leaf_node = self._all_leaves()
         leaf_node_sel = (*leaf_node.T,)
         return self.data[leaf_node_sel]
+
+    def depths(self):
+        """
+        Get a list of leaf depths in tree,
+        in same format as values().
+        Root is at depth 0.
+        :return (n_leaves, data_dim)
+        """
+        leaf_node = self._all_leaves()
+        return self.parent_depth[leaf_node[:, 0], 1]
 
     # Magic
     def __repr__(self):
