@@ -182,7 +182,7 @@ class N3Tree(nn.Module):
     def randn_(self, mean=0.0, std=1.0):
         """
         Set all values to random normal
-        Side effect: pushes values to leaf. 
+        Side effect: pushes values to leaf.
         """
         self._push_to_leaf()
         leaf_node = self._all_leaves()  # NNC, 4
@@ -192,7 +192,7 @@ class N3Tree(nn.Module):
     def clamp_(self, min, max, dim=None):
         """
         Clamp all values to random normal
-        Side effect: pushes values to leaf. 
+        Side effect: pushes values to leaf.
         """
         self._push_to_leaf()
         leaf_node = self._all_leaves()  # NNC, 4
@@ -233,7 +233,7 @@ class N3Tree(nn.Module):
                 return False
 
             if max_refine is not None and max_refine < leaf_node.shape[0]:
-                prob = torch.pow(1.0 / N, self.parent_depth[leaf_node[:, 0], 1])
+                prob = torch.pow(1.0 / self.N, self.parent_depth[leaf_node[:, 0], 1])
                 choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False,
                         p=prob)
                 choices = torch.from_numpy(choices).to(device=leaf_node.device)
