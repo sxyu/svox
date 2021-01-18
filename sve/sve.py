@@ -234,9 +234,11 @@ class N3Tree(nn.Module):
 
             if max_refine is not None and max_refine < leaf_node.shape[0]:
                 prob = torch.pow(1.0 / self.N, self.parent_depth[leaf_node[:, 0], 1])
+                prob = prob.cpu().numpy().astype(np.float64)
+                prob /= prob.sum()
                 choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False,
                         p=prob)
-                choices = torch.from_numpy(choices).to(device=leaf_node.device)
+                khoices = torch.from_numpy(choices).to(device=leaf_node.device)
                 leaf_node = leaf_node[choices]
 
             leaf_node_sel = (*leaf_node.T,)
