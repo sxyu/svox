@@ -72,8 +72,8 @@ class N3Tree(nn.Module):
         self.register_buffer("parent_depth", torch.zeros(
             init_reserve, 2, dtype=torch.int32))
 
-        self.n_internal = 1
-        self.max_depth = 0
+        self.register_buffer("n_internal", torch.tensor(1))
+        self.register_buffer("max_depth", torch.tensor(0))
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
 
@@ -250,8 +250,9 @@ class N3Tree(nn.Module):
         if not self.vary_non_leaf:
             self.data[filled:new_filled] = self.data[leaf_node_sel][:, None, None, None]
 
-        self.child[leaf_node_sel] = new_idxs
-        self.parent_depth[filled:new_filled, 0] = self._flatten_index(leaf_node)  # parent
+        self.child[filled:new_filled] = 0
+        self.child[leaf_node_sel] = new_idxs - leaf_node[:, 0].to(torch.int32)
+        self.parent_depth[filled:new_filled, 0] = self._pack_index(leaf_node)  # parent
         self.parent_depth[filled:new_filled, 1] = self.parent_depth[
                 leaf_node[:, 0], 1] + 1  # depth
         self.max_depth += 1
@@ -286,20 +287,21 @@ class N3Tree(nn.Module):
             return
 
         resized = False
-        if self.n_internal >= self.capacity:
+        filled = self.n_internal.item()
+        if filled >= self.capacity:
             self._resize_add_cap(1)
             resized = True
 
         if not self.vary_non_leaf:
-            self.data[self.n_internal] = self.data[intnode_idx, xi, yi, zi][None, None, None]
+            self.data[filled] = self.data[intnode_idx, xi, yi, zi][None, None, None]
 
-        self.child[self.n_internal] = 0
-        self.child[intnode_idx, xi, yi, zi] = self.n_internal - intnode_idx
+        self.child[filled] = 0
+        self.child[intnode_idx, xi, yi, zi] = filled - intnode_idx
         depth = self.parent_depth[intnode_idx, 1] + 1
-        self.parent_depth[self.n_internal, 0] = self._flatten_index(torch.tensor(
+        self.parent_depth[filled, 0] = self._pack_index(torch.tensor(
             [[intnode_idx, xi, yi, zi]], dtype=torch.int32))[0]
-        self.parent_depth[self.n_internal, 1] = depth
-        self.max_depth = max(self.max_depth, depth.item())
+        self.parent_depth[filled, 1] = depth
+        self.max_depth = max(self.max_depth, depth)
         self.n_internal += 1
         return resized
 
@@ -308,7 +310,7 @@ class N3Tree(nn.Module):
         Shrink data & buffers to tightly needed fit tree data.
         Will change the nn.Parameter size (data), breaking optimizer!
         """
-        new_cap = self.n_internal
+        new_cap = self.n_internal.item()
         if new_cap >= self.capacity:
             return False
         self.data = nn.Parameter(self.data.data[:new_cap])
@@ -329,7 +331,7 @@ class N3Tree(nn.Module):
         """
         Get number of total leaf+internal nodes (WARNING: slow)
         """
-        return self.n_internal + self.n_leaves
+        return self.n_internal.item() + self.n_leaves
 
     @property
     def capacity(self):
@@ -354,7 +356,7 @@ class N3Tree(nn.Module):
         return ("sve.N3Tree(N={}, data_dim={}, depth_limit={};" +
                 " capacity:{}/{} max_depth:{})").format(
                     self.N, self.data_dim, self.depth_limit,
-                    self.n_internal, self.capacity,  self.max_depth)
+                    self.n_internal.item(), self.capacity, self.max_depth.item())
 
     def __getitem__(self, key):
         if isinstance(key, slice) and key.start is None and key.stop is None:
@@ -408,7 +410,7 @@ class N3Tree(nn.Module):
         """
         if not self.vary_non_leaf:
             return
-        filled = self.n_internal
+        filled = self.n_internal.item()
 
         leaf_node = (self.child[:filled] == 0).nonzero(as_tuple=False)  # NNC, 4
         curr = leaf_node.clone()
@@ -420,18 +422,18 @@ class N3Tree(nn.Module):
             curr = curr[good_mask]
             leaf_node = leaf_node[good_mask]
 
-            curr = self._unflatten_index(self.parent_depth[curr[:, 0], 0].long())
+            curr = self._unpack_index(self.parent_depth[curr[:, 0], 0].long())
             self.data.data[(*leaf_node.T,)] += self.data[(*curr.T,)]
 
         with_child = self.child[:filled].nonzero(as_tuple=False)  # NNC, 4
         with_child_sel = (*with_child.T,)
         self.data.data[with_child_sel] = 0.0
 
-    def _flatten_index(self, txyz):
+    def _pack_index(self, txyz):
         return txyz[:, 0] * (self.N ** 3) + txyz[:, 1] * (self.N ** 2) + \
                txyz[:, 2] * self.N + txyz[:, 3]
 
-    def _unflatten_index(self, flat):
+    def _unpack_index(self, flat):
         t = []
         for i in range(3):
             t.append(flat % self.N)
@@ -464,4 +466,4 @@ class N3Tree(nn.Module):
         """
         Get all leaves of tree
         """
-        return (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)
+        return (self.child[:self.n_internal.item()] == 0).nonzero(as_tuple=False)
