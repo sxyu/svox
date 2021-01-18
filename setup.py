@@ -8,14 +8,14 @@ CUDA_FLAGS = []
 INSTALL_REQUIREMENTS = []
 
 ext_modules = [
-    CUDAExtension('sve.csrc', [
-        'sve/csrc/sve.cpp',
-        'sve/csrc/sve_kernel.cu',
+    CUDAExtension('svox.csrc', [
+        'svox/csrc/svox.cpp',
+        'svox/csrc/svox_kernel.cu',
     ]),
 ]
 
 setup(
-    name='sve',
+    name='svox',
     version=__version__,
     author='Alex Yu',
     author_email='alexyu99126@gmail.com',
@@ -23,7 +23,7 @@ setup(
     long_description='Sparse voxel N^3-tree data structure using CUDA',
     ext_modules=ext_modules,
     setup_requires=['pybind11>=2.5.0'],
-    packages=['sve', 'sve.csrc'],
+    packages=['svox', 'svox.csrc'],
     cmdclass={'build_ext': BuildExtension},
     zip_safe=False,
 )

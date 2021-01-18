@@ -3,11 +3,11 @@ import numpy as np
 from torch import nn
 from warnings import warn
 try:
-    import sve.csrc as _C
+    import svox.csrc as _C
     if not hasattr(_C, "query_vertical"):
-        warn("CUDA extension sve.csrc could not be loaded! " +
+        warn("CUDA extension svox.csrc could not be loaded! " +
              "Operations will be slow " +
-             "Please do not import sve in the SVE source directory.")
+             "Please do not import svox in the SVE source directory.")
         _C = None
 except:
     _C = None
@@ -370,7 +370,7 @@ class N3Tree(nn.Module):
 
     # Magic
     def __repr__(self):
-        return ("sve.N3Tree(N={}, data_dim={}, depth_limit={};" +
+        return ("svox.N3Tree(N={}, data_dim={}, depth_limit={};" +
                 " capacity:{}/{} max_depth:{})").format(
                     self.N, self.data_dim, self.depth_limit,
                     self.n_internal.item(), self.capacity, self.max_depth.item())

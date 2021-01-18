@@ -172,7 +172,7 @@ at::Tensor _query_vertical_cuda(
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
-            printf("Error in sve._query_vertical_cuda: %s\n", cudaGetErrorString(err));
+            printf("Error in svox._query_vertical_cuda: %s\n", cudaGetErrorString(err));
     return result;
 }
 
@@ -212,7 +212,7 @@ void _assign_vertical_cuda(
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
-            printf("Error in sve._assign_vertical_cuda: %s\n", cudaGetErrorString(err));
+            printf("Error in svox._assign_vertical_cuda: %s\n", cudaGetErrorString(err));
 }
 
 /**
@@ -248,6 +248,6 @@ at::Tensor _query_vertical_backward_cuda(
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
-            printf("Error in sve._query_vertical_backward_cuda: %s\n", cudaGetErrorString(err));
+            printf("Error in svox._query_vertical_backward_cuda: %s\n", cudaGetErrorString(err));
     return grad_data;
 }
