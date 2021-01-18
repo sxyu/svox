@@ -1,8 +1,11 @@
 from setuptools import setup
+import os.path as osp
 
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
-__version__ = '0.0.1'
+ROOT_DIR = osp.dirname(osp.abspath(__file__))
+
+__version__ = '0.0.2'
 
 CUDA_FLAGS = []
 INSTALL_REQUIREMENTS = []
@@ -11,7 +14,7 @@ ext_modules = [
     CUDAExtension('svox.csrc', [
         'svox/csrc/svox.cpp',
         'svox/csrc/svox_kernel.cu',
-    ]),
+    ], include_dirs=[osp.join(ROOT_DIR, "svox", "csrc", "include")]),
 ]
 
 setup(

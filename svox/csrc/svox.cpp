@@ -2,6 +2,7 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <cstdint>
 #include <vector>
+#include "common.hpp"
 
 namespace py = pybind11;
 
@@ -15,13 +16,14 @@ namespace py = pybind11;
 
 /** CUDA Interface **/
 at::Tensor _query_vertical_cuda(at::Tensor data, at::Tensor child,
-                                at::Tensor indices, bool vary_non_leaf);
+                                at::Tensor indices, bool vary_non_leaf,
+                                int padding_mode);
 at::Tensor _query_vertical_backward_cuda(at::Tensor child, at::Tensor indices,
                                          at::Tensor grad_output,
-                                         bool vary_non_leaf);
+                                         bool vary_non_leaf, int padding_mode);
 void _assign_vertical_cuda(at::Tensor data, at::Tensor child,
                            at::Tensor indices, at::Tensor values,
-                           bool vary_non_leaf);
+                           bool vary_non_leaf, int padding_mode);
 /** END CUDA Interface **/
 
 /**
@@ -31,14 +33,15 @@ void _assign_vertical_cuda(at::Tensor data, at::Tensor child,
  * @return (Q, K)
  * */
 at::Tensor query_vertical(at::Tensor data, at::Tensor child, at::Tensor indices,
-                          bool vary_non_leaf) {
+                          bool vary_non_leaf, int padding_mode) {
     CHECK_INPUT(data);
     CHECK_INPUT(child);
     CHECK_INPUT(indices);
     TORCH_CHECK(indices.is_floating_point());
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
-    return _query_vertical_cuda(data, child, indices, vary_non_leaf);
+    return _query_vertical_cuda(data, child, indices, vary_non_leaf,
+                                padding_mode);
 }
 
 /**
@@ -49,7 +52,8 @@ at::Tensor query_vertical(at::Tensor data, at::Tensor child, at::Tensor indices,
  * @return (M, N, N, N, K)
  * */
 at::Tensor query_vertical_backward(at::Tensor child, at::Tensor indices,
-                                   at::Tensor grad_output, bool vary_non_leaf) {
+                                   at::Tensor grad_output, bool vary_non_leaf,
+                                   int padding_mode) {
     CHECK_INPUT(child);
     CHECK_INPUT(grad_output);
     CHECK_INPUT(indices);
@@ -57,7 +61,7 @@ at::Tensor query_vertical_backward(at::Tensor child, at::Tensor indices,
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(grad_output));
     return _query_vertical_backward_cuda(child, indices, grad_output,
-                                         vary_non_leaf);
+                                         vary_non_leaf, padding_mode);
 }
 
 /**
@@ -67,7 +71,7 @@ at::Tensor query_vertical_backward(at::Tensor child, at::Tensor indices,
  * @param values (Q, K)
  * */
 void assign_vertical(at::Tensor data, at::Tensor child, at::Tensor indices,
-                     at::Tensor values, bool vary_non_leaf) {
+                     at::Tensor values, bool vary_non_leaf, int padding_mode) {
     CHECK_INPUT(data);
     CHECK_INPUT(child);
     CHECK_INPUT(indices);
@@ -76,18 +80,31 @@ void assign_vertical(at::Tensor data, at::Tensor child, at::Tensor indices,
     TORCH_CHECK(values.is_floating_point());
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
-    _assign_vertical_cuda(data, child, indices, values, vary_non_leaf);
+    _assign_vertical_cuda(data, child, indices, values, vary_non_leaf,
+                          padding_mode);
+}
+
+int parse_padding_mode(const std::string& padding_mode) {
+    if (padding_mode == "zeros") {
+        return PADDING_MODE_ZEROS;
+    } else if (padding_mode == "border") {
+        return PADDING_MODE_BORDER;
+    } else {
+        throw std::invalid_argument("Unsupported padding mode");
+    }
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("query_vertical", &query_vertical, "Query tree at coords [0, 1)",
           py::arg("data"), py::arg("child"), py::arg("indices"),
-          py::arg("vary_non_leaf"));
+          py::arg("vary_non_leaf"), py::arg("padding_mode"));
     m.def("query_vertical_backward", &query_vertical_backward,
           "Backwards pass for query_vertical", py::arg("child"),
-          py::arg("indices"), py::arg("grad_output"), py::arg("vary_non_leaf"));
+          py::arg("indices"), py::arg("grad_output"), py::arg("vary_non_leaf"),
+          py::arg("padding_mode"));
     m.def("assign_vertical", &assign_vertical,
           "Assign tree at given coords [0, 1)", py::arg("data"),
           py::arg("child"), py::arg("indices"), py::arg("values"),
-          py::arg("vary_non_leaf"));
+          py::arg("vary_non_leaf"), py::arg("padding_mode"));
+    m.def("parse_padding_mode", &parse_padding_mode);
 }

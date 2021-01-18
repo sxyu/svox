@@ -3,6 +3,7 @@
 
 #include <cuda.h>
 #include <cuda_runtime.h>
+#include "common.hpp"
 
 namespace {
 namespace device {
@@ -20,6 +21,15 @@ __device__ __inline__ void clamp_coord(scalar_t* __restrict__ q) {
 }
 
 template <typename scalar_t>
+__device__ __inline__ bool outside_grid(const scalar_t* __restrict__ q) {
+    for (int i = 0; i < 3; ++i) {
+        if (q[i] < 0.0 || q[i] >= 1.0)
+            return true;
+    }
+    return false;
+}
+
+template <typename scalar_t, int padding_mode>
 __global__ void query_single_vertical(const scalar_t* data,
                                       const int32_t* child,
                                       const scalar_t* __restrict__ indices,
@@ -33,7 +43,12 @@ __global__ void query_single_vertical(const scalar_t* data,
     scalar_t* out = result + K * tid;
 
     scalar_t q[3] = {q_[0], q_[1], q_[2]};
-    clamp_coord<scalar_t>(q);
+    if (padding_mode == PADDING_MODE_BORDER) {
+        clamp_coord<scalar_t>(q);
+    } else {
+        if (outside_grid<scalar_t>(q))
+            return;
+    }
     while (true) {
         // Find index of query point, in {0, ... N^3}
         int32_t index = 0;
@@ -58,7 +73,7 @@ __global__ void query_single_vertical(const scalar_t* data,
     }
 }
 
-template <typename scalar_t>
+template <typename scalar_t, int padding_mode>
 __global__ void query_single_vertical_backward(
                                       const int32_t* child,
                                       const scalar_t* __restrict__ indices,
@@ -74,7 +89,12 @@ __global__ void query_single_vertical_backward(
     const scalar_t* grad_out_q = grad_output + K * tid;
 
     scalar_t q[3] = {q_[0], q_[1], q_[2]};
-    clamp_coord<scalar_t>(q);
+    if (padding_mode == PADDING_MODE_BORDER) {
+        clamp_coord<scalar_t>(q);
+    } else {
+        if (outside_grid<scalar_t>(q))
+            return;
+    }
     while (true) {
         // Find index of query point, in {0, ... N^3}
         int32_t index = 0;
@@ -100,7 +120,7 @@ __global__ void query_single_vertical_backward(
     }
 }
 
-template <typename scalar_t, int K>
+template <typename scalar_t, int K, int padding_mode>
 __global__ void assign_single_vertical(scalar_t* data,
                                       const int32_t* child,
                                       const scalar_t* __restrict__ indices,
@@ -113,12 +133,18 @@ __global__ void assign_single_vertical(scalar_t* data,
     const scalar_t* q_ = indices + 3 * tid;
     const scalar_t* tgt = values + K * tid;
 
+    scalar_t q[3] = {q_[0], q_[1], q_[2]};
+    if (padding_mode == PADDING_MODE_BORDER) {
+        clamp_coord<scalar_t>(q);
+    } else {
+        if (outside_grid<scalar_t>(q))
+            return;
+    }
+
     scalar_t tmp[K];
     for (int i = 0; i < K; ++i) {
         tmp[i] = (scalar_t) 0.0;
     }
-    scalar_t q[3] = {q_[0], q_[1], q_[2]};
-    clamp_coord<scalar_t>(q);
     while (true) {
         // Find index of query point, in {0, ... N^3}
         int32_t index = 0;
@@ -151,7 +177,7 @@ const int N_THREADS = 1024;
 
 at::Tensor _query_vertical_cuda(
         at::Tensor data, at::Tensor child,
-        at::Tensor indices, bool vary_non_leaf) {
+        at::Tensor indices, bool vary_non_leaf, int padding_mode) {
     const auto Q = indices.size(0), N = data.size(1), K = data.size(-1);
 
     const int blocks = (Q - 1) / N_THREADS + 1;
@@ -159,16 +185,20 @@ at::Tensor _query_vertical_cuda(
     at::Tensor result = at::zeros({Q, K}, indices.options());
 
     AT_DISPATCH_FLOATING_TYPES(indices.type(), "_query_cuda_vertical", [&] {
-        device::query_single_vertical<scalar_t><<<blocks, N_THREADS>>>(
-                data.data<scalar_t>(),
-                child.data<int32_t>(),
-                indices.data<scalar_t>(),
-                result.data<scalar_t>(),
-                N,
-                Q,
-                K,
-                vary_non_leaf);
+#define QUERY_SINGLE_CALL(PADDING_MODE) \
+        device::query_single_vertical<scalar_t, PADDING_MODE><<<blocks, N_THREADS>>>( \
+                data.data<scalar_t>(), \
+                child.data<int32_t>(), \
+                indices.data<scalar_t>(), \
+                result.data<scalar_t>(), \
+                N, Q, K, vary_non_leaf)
+        if (padding_mode == 0) {
+            QUERY_SINGLE_CALL(0);
+        } else {
+            QUERY_SINGLE_CALL(1);
+        }
     });
+#undef QUERY_SINGLE_CALL
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -178,37 +208,42 @@ at::Tensor _query_vertical_cuda(
 
 void _assign_vertical_cuda(
         at::Tensor data, at::Tensor child,
-        at::Tensor indices, at::Tensor values, bool vary_non_leaf) {
+        at::Tensor indices, at::Tensor values, bool vary_non_leaf, int padding_mode) {
     const auto Q = indices.size(0), N = data.size(1), K = data.size(-1);
 
     const int blocks = (Q - 1) / N_THREADS + 1;
 
     AT_DISPATCH_FLOATING_TYPES(indices.type(), "_query_cuda_vertical", [&] {
         switch(K) {
-#define ASSIGN_SINGLE_VERTICAL_CASE(K_VAL) \
-        case K_VAL: \
-        device::assign_single_vertical<scalar_t, K_VAL><<<blocks, N_THREADS>>>( \
+#define ASSIGN_SINGLE_CALL(K_VAL, PADDING_MODE) \
+        device::assign_single_vertical<scalar_t, K_VAL, PADDING_MODE><<<blocks, N_THREADS>>>( \
                 data.data<scalar_t>(), \
                 child.data<int32_t>(), \
                 indices.data<scalar_t>(), \
                 values.data<scalar_t>(), \
-                N, \
-                Q, \
-                vary_non_leaf); \
+                N, Q, vary_non_leaf)
+#define ASSIGN_SINGLE_CASE(K_VAL) \
+        case K_VAL: \
+                if (padding_mode == 0) { \
+                    ASSIGN_SINGLE_CALL(K_VAL, 0); \
+                } else { \
+                    ASSIGN_SINGLE_CALL(K_VAL, 1); \
+                } \
                 break;
-            ASSIGN_SINGLE_VERTICAL_CASE(1);
-            ASSIGN_SINGLE_VERTICAL_CASE(2);
-            ASSIGN_SINGLE_VERTICAL_CASE(3);
-            ASSIGN_SINGLE_VERTICAL_CASE(4);
-            ASSIGN_SINGLE_VERTICAL_CASE(5);
-            ASSIGN_SINGLE_VERTICAL_CASE(6);
-            ASSIGN_SINGLE_VERTICAL_CASE(7);
-            ASSIGN_SINGLE_VERTICAL_CASE(8);
-            ASSIGN_SINGLE_VERTICAL_CASE(9);
-            ASSIGN_SINGLE_VERTICAL_CASE(10);
+            ASSIGN_SINGLE_CASE(1);
+            ASSIGN_SINGLE_CASE(2);
+            ASSIGN_SINGLE_CASE(3);
+            ASSIGN_SINGLE_CASE(4);
+            ASSIGN_SINGLE_CASE(5);
+            ASSIGN_SINGLE_CASE(6);
+            ASSIGN_SINGLE_CASE(7);
+            ASSIGN_SINGLE_CASE(8);
+            ASSIGN_SINGLE_CASE(9);
+            ASSIGN_SINGLE_CASE(10);
         };
     });
-#undef ASSIGN_SINGLE_VERTICAL_CASE
+#undef ASSIGN_SINGLE_CALL
+#undef ASSIGN_SINGLE_CASE
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)
@@ -226,7 +261,7 @@ at::Tensor _query_vertical_backward_cuda(
         at::Tensor child,
         at::Tensor indices,
         at::Tensor grad_output,
-        bool vary_non_leaf) {
+        bool vary_non_leaf, int padding_mode) {
     const auto Q = indices.size(0), N = child.size(1),
                K = grad_output.size(-1), M = child.size(0);
 
@@ -235,16 +270,20 @@ at::Tensor _query_vertical_backward_cuda(
     at::Tensor grad_data = at::zeros({M, N, N, N, K}, grad_output.options());
 
     AT_DISPATCH_FLOATING_TYPES(indices.type(), "_query_cuda_vertical_backward", [&] {
-        device::query_single_vertical_backward<scalar_t><<<blocks, N_THREADS>>>(
-                child.data<int32_t>(),
-                indices.data<scalar_t>(),
-                grad_output.data<scalar_t>(),
-                grad_data.data<scalar_t>(),
-                N,
-                Q,
-                K,
-                vary_non_leaf);
+#define QUERY_BACKWARD_SINGLE_CALL(PADDING_MODE) \
+        device::query_single_vertical_backward<scalar_t, PADDING_MODE><<<blocks, N_THREADS>>>( \
+                child.data<int32_t>(), \
+                indices.data<scalar_t>(), \
+                grad_output.data<scalar_t>(), \
+                grad_data.data<scalar_t>(), \
+                N, Q, K, vary_non_leaf)
+        if (padding_mode == 0) {
+            QUERY_BACKWARD_SINGLE_CALL(0);
+        } else {
+            QUERY_BACKWARD_SINGLE_CALL(1);
+        }
     });
+#undef QUERY_BACKWARD_SINGLE_CALL
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess)

@@ -42,10 +42,11 @@ torch.autograd.set_detect_anomaly(True)
 
 class _SVEQueryVerticalFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, data, child, indices, vary_non_leaf):
-        out = _C.query_vertical(data, child, indices, vary_non_leaf)
+    def forward(ctx, data, child, indices, vary_non_leaf, padding_mode_c):
+        out = _C.query_vertical(data, child, indices, vary_non_leaf, padding_mode_c)
         ctx.save_for_backward(child, indices)
         ctx.vary_non_leaf = vary_non_leaf
+        ctx.padding_mode_c = padding_mode_c
         return out
 
     @staticmethod
@@ -55,7 +56,8 @@ class _SVEQueryVerticalFunction(torch.autograd.Function):
         grad_out = grad_out.contiguous()
         if ctx.needs_input_grad[0]:
             grad_data = _C.query_vertical_backward(
-                    child, indices, grad_out, ctx.vary_non_leaf)
+                    child, indices, grad_out, ctx.vary_non_leaf,
+                    ctx.padding_mode_c)
         else:
             grad_data = None
 
@@ -68,7 +70,7 @@ class N3Tree(nn.Module):
     """
     def __init__(self, N=4, data_dim=4, depth_limit=4,
             vary_non_leaf=True, init_reserve=4,
-            init_refine=0, geom_resize_fact=1.5):
+            init_refine=0, geom_resize_fact=1.5, padding_mode="zeros"):
         """
         :param N branching factor N
         :param data_dim size of data stored at each leaf
@@ -77,6 +79,7 @@ class N3Tree(nn.Module):
         :param init_reserve amount of nodes to reserve initially
         :param init_refine number of times to refine entire tree initially
         :param geom_resize_fact geometric resizing factor
+        :param padding_mode padding mode for coords outside grid, zeros | border
         WARNING: nn.Parameters can change due to refinement, if refine returns True
         please re-make any optimizers
         """
@@ -98,10 +101,14 @@ class N3Tree(nn.Module):
         self.register_buffer("parent_depth", torch.zeros(
             init_reserve, 2, dtype=torch.int32))
 
-        self.register_buffer("n_internal", torch.tensor(1))
+        self.register_buffer("_n_internal", torch.tensor(1))
         self.register_buffer("max_depth", torch.tensor(0))
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
+        self.padding_mode = padding_mode
+
+        if _C is not None:
+            self.padding_mode_c = _C.parse_padding_mode(padding_mode)
 
         self.refine_all(init_refine)
 
@@ -121,10 +128,15 @@ class N3Tree(nn.Module):
         indices = indices.to(device=self.data.device)
         values = values.to(device=self.data.device)
 
-        if not cuda or _C is None:
+        if not cuda or _C is None or not self.data.is_cuda:
             warn("Using slow assignment")
+            if self.padding_mode == "zeros":
+                outside_mask = ((indices >= 1.0) | (indices < 1.0)).any(dim=-1)
+                indices = indices[outside_mask]
+
             n_queries, _ = indices.shape
             ind = indices.clone()
+
             node_ids = torch.zeros(n_queries, dtype=torch.long, device=indices.device)
             accum = torch.zeros((n_queries, self.data_dim), dtype=torch.float32,
                                   device=indices.device)
@@ -153,7 +165,7 @@ class N3Tree(nn.Module):
                 remain_mask &= nonterm_mask
         else:
             _C.assign_vertical(self.data, self.child, indices,
-                               values, self.vary_non_leaf)
+                               values, self.vary_non_leaf, self.padding_mode_c)
 
     def get(self, indices, cuda=True):
         """
@@ -171,8 +183,12 @@ class N3Tree(nn.Module):
         assert not indices.requires_grad  # Grad wrt indices not supported
         assert len(indices.shape) == 2
 
-        if not cuda or _C is None:
+        if not cuda or _C is None or not self.data.is_cuda:
             warn("Using slow query")
+            if self.padding_mode == "zeros":
+                outside_mask = ((indices >= 1.0) | (indices < 1.0)).any(dim=-1)
+            indices.clamp_(0.0, 1.0)
+
             n_queries, _ = indices.shape
             ind = indices.clone()
             node_ids = torch.zeros(n_queries, dtype=torch.long, device=indices.device)
@@ -199,10 +215,15 @@ class N3Tree(nn.Module):
 
                 if not self.vary_non_leaf:
                     result[remain_mask] = vals[nonterm_partial_mask]
+
+            if self.padding_mode == "zeros":
+                result[outside_mask] = 0.0
+
             return result
         else:
             return _SVEQueryVerticalFunction.apply(
-                    self.data, self.child, indices, self.vary_non_leaf)
+                    self.data, self.child, indices, self.vary_non_leaf,
+                    self.padding_mode_c)
 
     # In-place modification helpers
     def randn_(self, mean=0.0, std=1.0):
@@ -213,7 +234,8 @@ class N3Tree(nn.Module):
         self._push_to_leaf()
         leaf_node = self._all_leaves()  # NNC, 4
         leaf_node_sel = (*leaf_node.T,)
-        self.data.data[leaf_node_sel] = torch.randn_like(self.data.data[leaf_node_sel]) * std + mean
+        self.data.data[leaf_node_sel] = torch.randn_like(
+                self.data.data[leaf_node_sel]) * std + mean
 
     def clamp_(self, min, max, dim=None):
         """
@@ -290,7 +312,7 @@ class N3Tree(nn.Module):
             self.max_depth.fill_(max(self.parent_depth[filled:new_filled, 1].max().item(),
                     self.max_depth.item()))
 
-            self.n_internal += num_nc
+            self._n_internal += num_nc
             return resized
 
     def refine_all(self, repeats=1):
@@ -320,7 +342,7 @@ class N3Tree(nn.Module):
             return
 
         resized = False
-        filled = self.n_internal.item()
+        filled = self.n_internal
         if filled >= self.capacity:
             self._resize_add_cap(1)
             resized = True
@@ -335,7 +357,7 @@ class N3Tree(nn.Module):
             [[intnode_idx, xi, yi, zi]], dtype=torch.int32))[0]
         self.parent_depth[filled, 1] = depth
         self.max_depth = max(self.max_depth, depth)
-        self.n_internal += 1
+        self._n_internal += 1
         return resized
 
     def shrink_to_fit(self):
@@ -343,7 +365,7 @@ class N3Tree(nn.Module):
         Shrink data & buffers to tightly needed fit tree data.
         Will change the nn.Parameter size (data), breaking optimizer!
         """
-        new_cap = self.n_internal.item()
+        new_cap = self.n_internal
         if new_cap >= self.capacity:
             return False
         self.data = nn.Parameter(self.data.data[:new_cap])
@@ -364,7 +386,14 @@ class N3Tree(nn.Module):
         """
         Get number of total leaf+internal nodes (WARNING: slow)
         """
-        return self.n_internal.item() + self.n_leaves
+        return self.n_internal + self.n_leaves
+
+    @property
+    def n_internal(self):
+        """
+        Get number of total internal nodes
+        """
+        return self._n_internal.item()
 
     @property
     def capacity(self):
@@ -399,7 +428,7 @@ class N3Tree(nn.Module):
         return ("svox.N3Tree(N={}, data_dim={}, depth_limit={};" +
                 " capacity:{}/{} max_depth:{})").format(
                     self.N, self.data_dim, self.depth_limit,
-                    self.n_internal.item(), self.capacity, self.max_depth.item())
+                    self.n_internal, self.capacity, self.max_depth.item())
 
     def __getitem__(self, key):
         if isinstance(key, slice) and key.start is None and key.stop is None:
@@ -453,7 +482,7 @@ class N3Tree(nn.Module):
         """
         if not self.vary_non_leaf:
             return
-        filled = self.n_internal.item()
+        filled = self.n_internal
 
         leaf_node = (self.child[:filled] == 0).nonzero(as_tuple=False)  # NNC, 4
         curr = leaf_node.clone()
@@ -509,4 +538,4 @@ class N3Tree(nn.Module):
         """
         Get all leaves of tree
         """
-        return (self.child[:self.n_internal.item()] == 0).nonzero(as_tuple=False)
+        return (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)
