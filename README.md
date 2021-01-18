@@ -6,7 +6,7 @@ import torch
 from svox import N3Tree
 # N is spatial branching factor in N^3 tree
 # data_dim is number of dimensions in stored data (e.g. 4 for rgba)
-tree = N3Tree(N=4, data_dim=4)
+tree = N3Tree(N=4, data_dim=4).cuda()
 
 # coords (Q, 3) - 3d coordinates in [0, 1), will be clamped
 result = tree(coords)
