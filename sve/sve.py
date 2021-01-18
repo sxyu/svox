@@ -184,9 +184,12 @@ class N3Tree(nn.Module):
         leaf_node = (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)  # NNC, 4
         leaf_node_sel = (*leaf_node.T,)
         self.data.data[leaf_node_sel] = torch.randn_like(self.data.data[leaf_node_sel]) * std + mean
-    def clamp_(self, min, max):
+    def clamp_(self, min, max, dim=None):
         self._push_to_leaf()
-        self.data.data.clamp_(min, max)
+        if dim is not None:
+            self.data.data[..., dim].clamp_(min, max)
+        else:
+            self.data.data.clamp_(min, max)
 
     # Leaf refinement methods
     def refine_thresh(self, dim, thresh, max_refine=None):
