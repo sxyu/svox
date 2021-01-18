@@ -37,3 +37,10 @@ This is tricky because PyTorch assumes parameters are fixed size.
 
 ## Installation
 `pip install .`
+
+## Troubleshooting
+If you get SIGSEGV upon importing,
+check that your CUDA runtime and PyTorch CUDA versions match.  That is,
+`nvcc --version`
+should match (Python)
+`torch.version.cuda`
