@@ -20,7 +20,7 @@ setup(
     author='Alex Yu',
     author_email='alexyu99126@gmail.com',
     description='Sparse voxel N^3-tree data structure using CUDA',
-    long_description='Sparse voxel N^3-tree data structure using CUDA',
+    long_description='Sparse voxel N^3-tree data structure PyTorch extension, using CUDA',
     ext_modules=ext_modules,
     setup_requires=['pybind11>=2.5.0'],
     packages=['svox', 'svox.csrc'],

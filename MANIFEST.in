@@ -1,0 +1,8 @@
+include README.md
+include LICENSE.txt
+include MANIFEST.in
+include setup.py
+include svox/svox.py
+include svox/__init__.py
+include svox/csrc/svox.cpp
+include svox/csrc/svox_kernel.cu
