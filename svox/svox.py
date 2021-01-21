@@ -38,7 +38,6 @@ try:
 except:
     _C = None
 
-torch.autograd.set_detect_anomaly(True)
 
 class _SVEQueryVerticalFunction(torch.autograd.Function):
     @staticmethod
@@ -427,17 +426,6 @@ class N3Tree(nn.Module):
         return self.parent_depth[leaf_node[:, 0], 1]
 
 
-    #  def render(self, rays, white_bkgd=True):
-    #      """
-    #      :param rays ray [origins (3), directions(3), near(1), far(1)] (Q, 8)
-    #      :return [rgb depth alpha]
-    #      """
-    #      # Extension required
-    #      return _C.render(self.data, self.child, rays,
-    #              self.offset,
-    #              self.invradius,
-    #              white_bkgd)
-
     # Magic
     def __repr__(self):
         return ("svox.N3Tree(N={}, data_dim={}, depth_limit={};" +
@@ -449,10 +437,16 @@ class N3Tree(nn.Module):
         if isinstance(key, slice) and key.start is None and key.stop is None:
             # Everything
             return self
+        elif isinstance(key, int):
+            # By channel
+            return self.values()[..., key]
         elif isinstance(key, tuple) and len(key) == 3:
             # Use x,y,z format
             return self.get(torch.tensor(key, dtype=torch.float32,
                 device=self.data.device)[None])[0]
+        elif isinstance(key, torch.Tensor):
+            assert key.dim() == 1
+            return self.values()[key]
         else:
             raise NotImplementedError("Unsupported getitem magic")
 
@@ -470,6 +464,12 @@ class N3Tree(nn.Module):
             key_tensor = torch.tensor(key, dtype=torch.float32,
                 device=self.data.device)[None]
             self.set(key_tensor, self._make_val_tensor(val))
+        elif isinstance(key, torch.Tensor):
+            assert key.dim() == 1
+            self._push_to_leaf()
+            leaf_node = self._all_leaves()[key]
+            leaf_node_sel = (*leaf_node.T,)
+            self.data.data[leaf_node_sel] = val
         else:
             raise NotImplementedError("Unsupported setitem magic")
 
@@ -489,6 +489,24 @@ class N3Tree(nn.Module):
     def __idiv__(self, val):
         self.data.data /= self._make_val_tensor(val)[None, None, None]
         return self
+
+    def __eq__(self, other):
+        return self.values() == other
+
+    def __ne__(self, other):
+        return self.values() != other
+
+    def __gt__(self, other):
+        return self.values() > other
+
+    def __lt__(self, other):
+        return self.values() < other
+
+    def __ge__(self, other):
+        return self.values() >= other
+
+    def __le__(self, other):
+        return self.values() <= other
 
     # Internal utils
     def _push_to_leaf(self):
