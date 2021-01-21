@@ -490,24 +490,6 @@ class N3Tree(nn.Module):
         self.data.data /= self._make_val_tensor(val)[None, None, None]
         return self
 
-    def __eq__(self, other):
-        return self.values() == other
-
-    def __ne__(self, other):
-        return self.values() != other
-
-    def __gt__(self, other):
-        return self.values() > other
-
-    def __lt__(self, other):
-        return self.values() < other
-
-    def __ge__(self, other):
-        return self.values() >= other
-
-    def __le__(self, other):
-        return self.values() <= other
-
     # Internal utils
     def _push_to_leaf(self):
         """
