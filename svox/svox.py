@@ -69,7 +69,7 @@ class N3Tree(nn.Module):
     """
     def __init__(self, N=4, data_dim=4, depth_limit=4,
             init_reserve=4, init_refine=0, geom_resize_fact=1.5, padding_mode="zeros",
-            radius=0.5, center=[0.5, 0.5, 0.5]):
+            radius=0.5, center=[0.5, 0.5, 0.5], map_location="cpu"):
         """
         :param N branching factor N
         :param data_dim size of data stored at each leaf
@@ -94,17 +94,17 @@ class N3Tree(nn.Module):
                 init_reserve += (N ** i) ** 3
 
         self.register_parameter("data", nn.Parameter(
-            torch.zeros(init_reserve, N, N, N, data_dim)))
+            torch.zeros(init_reserve, N, N, N, data_dim, device=map_location)))
         self.register_buffer("child", torch.zeros(
-            init_reserve, N, N, N, dtype=torch.int32))
+            init_reserve, N, N, N, dtype=torch.int32, device=map_location))
         self.register_buffer("parent_depth", torch.zeros(
-            init_reserve, 2, dtype=torch.int32))
+            init_reserve, 2, dtype=torch.int32, device=map_location))
 
-        self.register_buffer("_n_internal", torch.tensor(1))
-        self.register_buffer("max_depth", torch.tensor(0))
+        self.register_buffer("_n_internal", torch.tensor(1, device=map_location))
+        self.register_buffer("max_depth", torch.tensor(0, device=map_location))
 
-        radius = torch.tensor(radius)
-        center = torch.tensor(center)
+        radius = torch.tensor(radius, device=map_location)
+        center = torch.tensor(center, device=map_location)
         self.register_buffer("invradius", 0.5 / radius, persistent=False)
         self.register_buffer("offset", 0.5 * (1.0 - center / radius), persistent=False)
 
@@ -138,10 +138,11 @@ class N3Tree(nn.Module):
             indices = self._transform_coord(indices)
 
             if self.padding_mode == "zeros":
-                outside_mask = ((indices >= 1.0) | (indices < 1.0)).any(dim=-1)
-                indices = indices[outside_mask]
+                outside_mask = ((indices >= 1.0) | (indices < 0.0)).any(dim=-1)
+                indices = indices[~outside_mask]
 
             n_queries, _ = indices.shape
+            indices.clamp_(0.0, 1.0 - 1e-10)
             ind = indices.clone()
 
             node_ids = torch.zeros(n_queries, dtype=torch.long, device=indices.device)
@@ -150,6 +151,7 @@ class N3Tree(nn.Module):
             remain_mask = torch.ones(n_queries, dtype=torch.bool, device=indices.device)
             while remain_mask.any():
                 ind_floor = torch.floor(ind[remain_mask] * self.N)
+                ind_floor.clamp_max_(self.N - 1)
                 sel = (node_ids[remain_mask], *(ind_floor.long().T),)
 
                 deltas = self.child[sel]
@@ -197,8 +199,8 @@ class N3Tree(nn.Module):
             indices = self._transform_coord(indices)
 
             if self.padding_mode == "zeros":
-                outside_mask = ((indices >= 1.0) | (indices < 1.0)).any(dim=-1)
-            indices.clamp_(0.0, 1.0)
+                outside_mask = ((indices >= 1.0) | (indices < 0.0)).any(dim=-1)
+            indices.clamp_(0.0, 1.0 - 1e-10)
 
             n_queries, _ = indices.shape
             ind = indices.clone()
@@ -206,8 +208,12 @@ class N3Tree(nn.Module):
             result = torch.zeros((n_queries, self.data_dim), dtype=torch.float32,
                                   device=indices.device)
             remain_mask = torch.ones(n_queries, dtype=torch.bool, device=indices.device)
+            if self.padding_mode == "zeros":
+                remain_mask &= ~outside_mask
+
             while remain_mask.any():
                 ind_floor = torch.floor(ind[remain_mask] * self.N)
+                ind_floor.clamp_max_(self.N - 1)
                 sel = (node_ids[remain_mask], *(ind_floor.long().T),)
 
                 deltas = self.child[sel]
