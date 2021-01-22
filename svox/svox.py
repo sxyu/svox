@@ -24,6 +24,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 """
 
+import os.path as osp
 import torch
 import numpy as np
 from torch import nn
@@ -431,6 +432,54 @@ class N3Tree(nn.Module):
         leaf_node = self._all_leaves()
         return self.parent_depth[leaf_node[:, 0], 1]
 
+    def savez(self, path):
+        data = {
+            "data_dim" : self.data_dim,
+            "child" : self.child.cpu(),
+            "parent_depth" : self.parent_depth.cpu(),
+            "n_internal" : self._n_internal.cpu().item(),
+            "max_depth" : self.max_depth.cpu().item(),
+            "invradius" : self.invradius.cpu().item(),
+            "offset" : self.offset.cpu(),
+            "depth_limit": self.depth_limit,
+            "geom_resize_fact": self.geom_resize_fact,
+            "padding_mode": self.padding_mode
+        }
+        if self.data_dim != 3 and self.data_dim != 4:
+            data["data"] = self.data.data.cpu()
+        else:
+            import imageio
+            data_path = osp.splitext(path)[0] + '_data.exr'
+            imageio.imwrite(data_path, self.data.data.cpu().reshape(-1,
+                self.N ** 2, self.data_dim))
+        np.savez_compressed(path, **data)
+
+    def loadz(self, path):
+        z = np.load(path)
+        device = self.data.data.device
+        self.data_dim = int(z["data_dim"])
+        self.child = torch.from_numpy(z["child"]).to(device)
+        self.N = self.child.shape[-1]
+        self.parent_depth = torch.from_numpy(z["parent_depth"]).to(device)
+        self._n_internal.fill_(z["n_internal"].item())
+        self.max_depth.fill_(z["max_depth"].item())
+        self.invradius.fill_(z["invradius"].item())
+        self.offset = torch.from_numpy(z["offset"]).to(device)
+        self.depth_limit = int(z["depth_limit"])
+        self.geom_resize_fact = float(z["geom_resize_fact"])
+        self.padding_mode = str(z["padding_mode"])
+        if _C is not None:
+            self.padding_mode_c = _C.parse_padding_mode(self.padding_mode)
+        if self.data_dim != 3 and self.data_dim != 4:
+            self.data.data = torch.from_numpy(z["data"]).to(device)
+        else:
+            import imageio
+            data_path = osp.splitext(path)[0] + '_data.exr'
+            self.data.data = torch.from_numpy(
+                        imageio.imread(data_path).reshape(
+                            -1, self.N, self.N, self.N, self.data_dim
+                        )
+                    ).to(device)
 
     # Magic
     def __repr__(self):
