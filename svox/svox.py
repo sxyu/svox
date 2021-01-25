@@ -411,7 +411,7 @@ class N3Tree(nn.Module):
         """
         return self.parent_depth.shape[0]
 
-    def values(self):
+    def values(self, depth=None):
         """
         Get a list of all leaf values in tree
         Side effect: pushes values to leaf.
@@ -420,17 +420,34 @@ class N3Tree(nn.Module):
         self._push_to_leaf()
         leaf_node = self._all_leaves()
         leaf_node_sel = (*leaf_node.T,)
-        return self.data[leaf_node_sel]
+        data = self.data[leaf_node_sel]
+        if depth is not None:
+            depths = self.parent_depth[leaf_node[:, 0], 1]
+            data = data[depths == depth]
+        return data
 
     def depths(self):
         """
         Get a list of leaf depths in tree,
-        in same format as values().
+        in same order as values(), corners().
         Root is at depth 0.
-        :return (n_leaves, data_dim)
+        :return (n_leaves) int32
         """
         leaf_node = self._all_leaves()
         return self.parent_depth[leaf_node[:, 0], 1]
+
+    def corners(self, depth=None):
+        """
+        Get a list of leaf lower xyz corners in tree,
+        in same order as values(), depths().
+        :return (n_leaves, 3)
+        """
+        leaf_node = self._all_leaves()
+        corners = self._calc_corners(leaf_node)
+        if depth is not None:
+            depths = self.parent_depth[leaf_node[:, 0], 1]
+            corners = corners[depths == depth]
+        return corners
 
     def savez(self, path):
         data = {
@@ -568,6 +585,34 @@ class N3Tree(nn.Module):
         with_child = self.child[:filled].nonzero(as_tuple=False)  # NNC, 4
         with_child_sel = (*with_child.T,)
         self.data.data[with_child_sel] = 0.0
+
+
+    def _calc_corners(self, nodes):
+        """
+        Compute lower bbox corners for given nodes
+        :nodes (Q, 4)
+        :return (Q, 3)
+        """
+        Q, _ = nodes.shape
+        filled = self.n_internal
+
+        curr = nodes.clone()
+        mask = torch.ones(Q, device=curr.device, dtype=torch.bool)
+        output = torch.zeros(Q, 3)
+
+        while True:
+            output[mask] += curr[:, 1:]
+            output[mask] /= self.N
+
+            good_mask = curr[:, 0] != 0
+            if not good_mask.any():
+                break
+            mask[mask] = good_mask 
+
+            curr = self._unpack_index(self.parent_depth[curr[good_mask, 0], 0].long())
+
+        return output
+
 
     def _pack_index(self, txyz):
         return txyz[:, 0] * (self.N ** 3) + txyz[:, 1] * (self.N ** 2) + \
