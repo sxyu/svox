@@ -1,4 +1,6 @@
 """
+[BSD 2-CLAUSE LICENSE]
+
 Copyright Alex Yu 2021
 
 Redistribution and use in source and binary forms, with or without
@@ -63,6 +65,68 @@ class _SVEQueryVerticalFunction(torch.autograd.Function):
 
         return grad_data, None, None, None, None, None
 
+class _N3TreeView:
+    def __init__(self, tree, key):
+        self.tree = tree
+        self.key = key
+        self._value = None;
+
+    def __repr__(self):
+        return "N3TreeView(" + repr(self.value()) + ")"
+
+    def value(self):
+        if self._value is None:
+            self._value = self.tree.values().__getitem__(self.key)
+        return self._value
+
+    def __torch_function__(self, func, types, args=(), kwargs=None):
+        if kwargs is None:
+            kwargs = {}
+        new_args = []
+        for arg in args:
+            if isinstance(arg, _N3TreeView):
+                new_args.append(arg.value())
+            else:
+                new_args.append(arg)
+        return func(*new_args, **kwargs)
+
+    def set(self, value):
+        self.tree._push_to_leaf()
+        leaf_node = self.tree._all_leaves()
+        key1 = self.key[0] if isinstance(self.key, tuple) else self.key
+        leaf_node = leaf_node.__getitem__(key1)
+        if isinstance(self.key, tuple):
+            leaf_node_sel = (*leaf_node.T, *self.key[1:])
+        else:
+            leaf_node_sel = (*leaf_node.T,)
+        self.tree.data.data[leaf_node_sel] = value
+
+    @property
+    def shape(self):
+        return self.value().shape
+
+    @property
+    def requires_grad(self):
+        return self.value().requires_grad
+
+    @requires_grad.setter
+    def requires_grad(self, value):
+        self.value().requires_grad = value
+
+# Redirect functions to Tensor
+def _redirect_funcs():
+    redir_funcs = ['__add__', '__mul__', '__sub__', '__floordiv__',
+                   '__mod__', '__div__', '__radd__', '__rsub__', '__rmul__',
+                   '__rdiv__', 'item', 'size', 'dim', 'detach', 'cpu', 'cuda', 'to',
+                   'float', 'double', 'int', 'long']
+    def redirect_func(redir_func):
+        def redir_impl(self, *args, **kwargs):
+            val = self.value()
+            return getattr(self.value(), redir_func)(*args, **kwargs)
+        setattr(_N3TreeView, redir_func, redir_impl)
+    for redir_func in redir_funcs:
+        redirect_func(redir_func)
+_redirect_funcs()
 
 class N3Tree(nn.Module):
     """
@@ -426,6 +490,10 @@ class N3Tree(nn.Module):
             data = data[depths == depth]
         return data
 
+    @property
+    def depth(self):
+        return self.depths()
+
     def depths(self):
         """
         Get a list of leaf depths in tree,
@@ -506,44 +574,21 @@ class N3Tree(nn.Module):
                     self.n_internal, self.capacity, self.max_depth.item())
 
     def __getitem__(self, key):
-        if isinstance(key, slice) and key.start is None and key.stop is None:
-            # Everything
-            return self
-        elif isinstance(key, int):
-            # By channel
-            return self.values()[..., key]
-        elif isinstance(key, tuple) and len(key) == 3:
+        if isinstance(key, tuple) and len(key) == 3:
             # Use x,y,z format
             return self.get(torch.tensor(key, dtype=torch.float32,
                 device=self.data.device)[None])[0]
-        elif isinstance(key, torch.Tensor):
-            assert key.dim() == 1
-            return self.values()[key]
         else:
-            raise NotImplementedError("Unsupported getitem magic")
+            return _N3TreeView(self, key)
 
     def __setitem__(self, key, val):
-        if isinstance(key, slice) and key.start is None and key.stop is None:
-            # Everything
-            self.data.data.zero_()
-            self.data.data[0] = self._make_val_tensor(val)
-        elif isinstance(key, int):
-            # By channel
-            self.data.data[..., key].zero_()
-            self.data.data[0, ..., key] = val
-        elif isinstance(key, tuple) and len(key) == 3:
+        if isinstance(key, tuple) and len(key) == 3:
             # Use x,y,z format
             key_tensor = torch.tensor(key, dtype=torch.float32,
                 device=self.data.device)[None]
             self.set(key_tensor, self._make_val_tensor(val))
-        elif isinstance(key, torch.Tensor):
-            assert key.dim() == 1
-            self._push_to_leaf()
-            leaf_node = self._all_leaves()[key]
-            leaf_node_sel = (*leaf_node.T,)
-            self.data.data[leaf_node_sel] = val
         else:
-            raise NotImplementedError("Unsupported setitem magic")
+            _N3TreeView(self, key).set(val)
 
 
     def __iadd__(self, val):
@@ -607,7 +652,7 @@ class N3Tree(nn.Module):
             good_mask = curr[:, 0] != 0
             if not good_mask.any():
                 break
-            mask[mask] = good_mask 
+            mask[mask] = good_mask
 
             curr = self._unpack_index(self.parent_depth[curr[good_mask, 0], 0].long())
 
@@ -655,3 +700,16 @@ class N3Tree(nn.Module):
 
     def _transform_coord(self, indices):
         return torch.addcmul(self.offset, indices, self.invradius)
+
+    # Tensor analogy
+    @property
+    def shape(self):
+        return torch.Size((self.n_leaves, self.data_dim))
+
+    def dim(self):
+        return 2
+
+    def size(self, *args):
+        if len(args) == 1:
+            return self.shape[args[0]]
+        return self.shape
