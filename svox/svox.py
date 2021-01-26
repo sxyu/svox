@@ -598,7 +598,7 @@ class N3Tree(nn.Module):
 
         curr = nodes.clone()
         mask = torch.ones(Q, device=curr.device, dtype=torch.bool)
-        output = torch.zeros(Q, 3)
+        output = torch.zeros(Q, 3, device=curr.device, dtype=torch.float32)
 
         while True:
             output[mask] += curr[:, 1:]
