@@ -117,7 +117,10 @@ class _N3TreeView:
 def _redirect_funcs():
     redir_funcs = ['__add__', '__mul__', '__sub__', '__floordiv__',
                    '__mod__', '__div__', '__radd__', '__rsub__', '__rmul__',
-                   '__rdiv__', 'item', 'size', 'dim', 'detach', 'cpu', 'cuda', 'to',
+                   '__rdiv__', '__eq__', '__ne__', '__ge__', '__gt__', '__le__',
+                   '__lt__', '__abs__', '__floor__', '__ceil__', '__pos__', '__neg__',
+                   '__round__',
+                   'item', 'size', 'dim', 'detach', 'cpu', 'cuda', 'to',
                    'float', 'double', 'int', 'long']
     def redirect_func(redir_func):
         def redir_impl(self, *args, **kwargs):
