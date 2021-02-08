@@ -9,7 +9,7 @@ CUDA_FLAGS = []
 INSTALL_REQUIREMENTS = []
 
 setup(
-    name='svox',
+    name='svox-np',
     version=__version__,
     author='Alex Yu',
     author_email='alexyu99126@gmail.com',
