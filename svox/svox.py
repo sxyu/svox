@@ -183,7 +183,7 @@ class N3Tree(nn.Module):
         if _C is not None:
             self.padding_mode_c = _C.parse_padding_mode(padding_mode)
 
-        self.refine_all(init_refine)
+        self.refine(repeats=init_refine)
 
 
     # Main accesors
@@ -333,13 +333,14 @@ class N3Tree(nn.Module):
         self.data.data[leaf_node_sel] = self.data.data[leaf_node_sel].clamp(min, max)
 
     # Leaf refinement methods
-    def refine_thresh(self, dim, thresh, max_refine=None):
+    def refine(self, dim=-1, thresh=None, mask=None, max_refine=None, repeats=1):
         """
-        Refine each leaf node whose value at dimension 'dim' >= 'thresh'.
+        Refine each leaf node, optionally filtering by value at dimension 'dim' >= 'thresh'.
         Respects depth_limit.
         Side effect: pushes values to leaf.
-        :param dim dimension to check. Can be negative (like -1)
+        :param dim dimension to check (used if thresh != None). Can be negative (like -1)
         :param thresh threshold for dimension.
+        :param mask leaf mask
         :param max_refine maximum number of leaves to refine.
         'max_refine' random leaves (without replacement)
         meeting the threshold are refined in case more leaves
@@ -347,64 +348,56 @@ class N3Tree(nn.Module):
         more often.
         """
         with torch.no_grad():
-            filled = self.n_internal
             resized = False
+            for _ in range(repeats):
+                filled = self.n_internal
+                good_mask = self.child[:filled] == 0
+                if thresh is not None:
+                    self._push_to_leaf()
+                    good_mask &= (self.data[:filled, ..., dim] >= thresh)
 
-            good_mask = self.child[:filled] == 0
-            if thresh is not None:
-                self._push_to_leaf()
-                good_mask &= (self.data[:filled, ..., dim] >= thresh)
+                good_mask &= (self.parent_depth[:filled, -1] < self.depth_limit)[:, None, None, None]
 
-            good_mask &= (self.parent_depth[:filled, -1] < self.depth_limit)[:, None, None, None]
+                leaf_node = good_mask.nonzero(as_tuple=False)  # NNC, 4
+                if mask is not None:
+                    leaf_node = leaf_node[mask]
+                if leaf_node.shape[0] == 0:
+                    # Nothing to do
+                    return False
 
-            leaf_node = good_mask.nonzero(as_tuple=False)  # NNC, 4
-            if leaf_node.shape[0] == 0:
-                # Nothing to do
-                return False
+                if max_refine is not None and max_refine < leaf_node.shape[0]:
+                    prob = torch.pow(1.0 / (self.N ** 3), self.parent_depth[leaf_node[:, 0], 1])
+                    prob = prob.cpu().numpy().astype(np.float64)
+                    prob /= prob.sum()
+                    choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False,
+                            p=prob)
+                    choices = torch.from_numpy(choices).to(device=leaf_node.device)
+                    leaf_node = leaf_node[choices]
 
-            if max_refine is not None and max_refine < leaf_node.shape[0]:
-                prob = torch.pow(1.0 / (self.N ** 3), self.parent_depth[leaf_node[:, 0], 1])
-                prob = prob.cpu().numpy().astype(np.float64)
-                prob /= prob.sum()
-                choices = np.random.choice(leaf_node.shape[0], max_refine, replace=False,
-                        p=prob)
-                choices = torch.from_numpy(choices).to(device=leaf_node.device)
-                leaf_node = leaf_node[choices]
+                leaf_node_sel = (*leaf_node.T,)
+                num_nc = leaf_node.shape[0]
+                new_filled = filled + num_nc
 
-            leaf_node_sel = (*leaf_node.T,)
-            num_nc = leaf_node.shape[0]
-            new_filled = filled + num_nc
+                cap_needed = new_filled - self.capacity
+                if cap_needed > 0:
+                    self._resize_add_cap(cap_needed)
+                    resized = True
 
-            cap_needed = new_filled - self.capacity
-            if cap_needed > 0:
-                self._resize_add_cap(cap_needed)
-                resized = True
+                new_idxs = torch.arange(filled, filled + num_nc,
+                        device=self.child.device, dtype=self.child.dtype) # NNC
 
-            new_idxs = torch.arange(filled, filled + num_nc,
-                    device=self.child.device, dtype=self.child.dtype) # NNC
+                self.child[filled:new_filled] = 0
+                self.child[leaf_node_sel] = new_idxs - leaf_node[:, 0].to(torch.int32)
+                self.parent_depth[filled:new_filled, 0] = self._pack_index(leaf_node)  # parent
+                self.parent_depth[filled:new_filled, 1] = self.parent_depth[
+                        leaf_node[:, 0], 1] + 1  # depth
+                self.max_depth.fill_(max(self.parent_depth[filled:new_filled, 1].max().item(),
+                        self.max_depth.item()))
 
-            self.child[filled:new_filled] = 0
-            self.child[leaf_node_sel] = new_idxs - leaf_node[:, 0].to(torch.int32)
-            self.parent_depth[filled:new_filled, 0] = self._pack_index(leaf_node)  # parent
-            self.parent_depth[filled:new_filled, 1] = self.parent_depth[
-                    leaf_node[:, 0], 1] + 1  # depth
-            self.max_depth.fill_(max(self.parent_depth[filled:new_filled, 1].max().item(),
-                    self.max_depth.item()))
-
-            self._n_internal += num_nc
-            return resized
-
-    def refine_all(self, repeats=1):
-        """
-        Refine all leaves. Respects depth_limit
-        :param repeats number of times to repeat procedure
-        """
-        resized = False
-        for _ in range(repeats):
-            resized = self.refine_thresh(0, None) or resized
+                self._n_internal += num_nc
         return resized
 
-    def refine_at(self, intnode_idx, xyzi):
+    def _refine_at(self, intnode_idx, xyzi):
         """
         Advanced: refine specific leaf node.
         :param intnode_idx index of internal node for identifying leaf
@@ -507,7 +500,7 @@ class N3Tree(nn.Module):
         leaf_node = self._all_leaves()
         return self.parent_depth[leaf_node[:, 0], 1]
 
-    def corners(self, depth=None):
+    def corners(self):
         """
         Get a list of leaf lower xyz corners in tree,
         in same order as values(), depths().
@@ -515,9 +508,6 @@ class N3Tree(nn.Module):
         """
         leaf_node = self._all_leaves()
         corners = self._calc_corners(leaf_node)
-        if depth is not None:
-            depths = self.parent_depth[leaf_node[:, 0], 1]
-            corners = corners[depths == depth]
         return corners
 
     def savez(self, path):
