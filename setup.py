@@ -3,7 +3,7 @@ import os.path as osp
 
 ROOT_DIR = osp.dirname(osp.abspath(__file__))
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 
 CUDA_FLAGS = []
 INSTALL_REQUIREMENTS = []

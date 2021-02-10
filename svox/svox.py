@@ -33,8 +33,12 @@ from warnings import warn
 class _N3TreeView:
     def __init__(self, tree, key):
         self.tree = tree
+        if isinstance(key, np.ndarray) and key.ndim == 2 and key.shape[1] == 3:
+            packed_sorted = tree._pack_index(tree._all_leaves())
+            val, target = tree.get(key, want_node_ids=True)
+            key = np.searchsorted(packed_sorted, target, side='left')
         self.key = key
-        self._value = None;
+        self._value = None
 
     def __repr__(self):
         return "N3TreeView(" + repr(self.value()) + ")"
@@ -65,6 +69,21 @@ class _N3TreeView:
         else:
             leaf_node_sel = (*leaf_node.T,)
         self.tree.data[leaf_node_sel] = value
+
+    def refine(self):
+        return self.tree.refine(mask=self.mask)
+
+    @property
+    def mask(self):
+        """
+        Get leaf mask (1D)
+        """
+        n_leaves = self.tree.n_leaves
+        result = np.zeros((n_leaves,), dtype=np.bool)
+        key1 = self.key[0] if isinstance(self.key, tuple) else self.key
+        result.__setitem__(key1, True)
+        return result
+
 
     @property
     def shape(self):
@@ -130,6 +149,7 @@ class N3Tree:
         self.geom_resize_fact = geom_resize_fact
         self.padding_mode = padding_mode
 
+        self._last_all_leaves = None
         self.refine(repeats=init_refine)
 
 
@@ -180,14 +200,14 @@ class N3Tree:
 
             remain_mask &= nonterm_mask
 
-    def get(self, indices, cuda=True):
+    def get(self, indices, want_node_ids=False, cuda=True):
         """
         Get tree values,
         :param indices (Q, 3)
         """
-        return self(indices, cuda=cuda)
+        return self(indices, want_node_ids, cuda=cuda)
 
-    def __call__(self, indices, cuda=True):
+    def __call__(self, indices, want_node_ids=False, cuda=True):
         """
         Get tree values,
         :param indices (Q, 3)
@@ -207,6 +227,8 @@ class N3Tree:
         remain_mask = np.ones((n_queries,), dtype=np.bool)
         if self.padding_mode == "zeros":
             remain_mask &= ~outside_mask
+        if want_node_ids:
+            subidx = np.zeros((n_queries, 3), dtype=np.long)
 
         while remain_mask.any():
             ind_floor = np.minimum(np.floor(ind[remain_mask] * self.N), self.N - 1)
@@ -220,6 +242,9 @@ class N3Tree:
             nonterm_mask[remain_mask] = nonterm_partial_mask
 
             result[remain_mask] += vals
+            if want_node_ids:
+                subidx[remain_mask & (~nonterm_partial_mask)] = \
+                            ind_floor.astype(np.long)[~nonterm_partial_mask]
 
             node_ids[remain_mask] += deltas
             ind[remain_mask] = ind[remain_mask] * self.N - ind_floor
@@ -228,6 +253,9 @@ class N3Tree:
         if self.padding_mode == "zeros":
             result[outside_mask] = 0.0
 
+        if want_node_ids:
+            txyz = np.concatenate([node_ids[:, None], subidx], axis=-1)
+            return result, self._pack_index(txyz)
         return result
 
     # In-place modification helpers
@@ -274,15 +302,17 @@ class N3Tree:
         for _ in range(repeats):
             filled = self.n_internal
             good_mask = self.child[:filled] == 0
+            if mask is not None:
+                good_mask[good_mask] &= mask
+
             if thresh is not None:
                 self._push_to_leaf()
                 good_mask &= (self.data[:filled, ..., dim] >= thresh)
 
-            good_mask &= (self.parent_depth[:filled, -1] < self.depth_limit)[:, None, None, None]
+            good_mask &= (self.parent_depth[:filled, -1] <
+                    self.depth_limit)[:, None, None, None]
 
             leaf_node = np.stack(good_mask.nonzero(), axis=-1)  # NNC, 4
-            if mask is not None:
-                leaf_node = leaf_node[mask]
             if leaf_node.shape[0] == 0:
                 # Nothing to do
                 return False
@@ -315,6 +345,8 @@ class N3Tree:
                     self.max_depth)
 
             self.n_internal += num_nc
+        if repeats > 0:
+            self._last_all_leaves = None
         return resized
 
     def _refine_at(self, intnode_idx, xyzi):
@@ -347,6 +379,7 @@ class N3Tree:
         self.parent_depth[filled, 1] = depth
         self.max_depth = max(self.max_depth, depth)
         self.n_internal += 1
+        self._last_all_leaves = None
         return resized
 
     def shrink_to_fit(self):
@@ -474,6 +507,8 @@ class N3Tree:
                     self.n_internal, self.capacity, self.max_depth)
 
     def __getitem__(self, key):
+        if isinstance(key, list):
+            key = np.array(key)
         if isinstance(key, tuple) and len(key) == 3:
             # Use x,y,z format
             return self.get(np.array(key, dtype=np.float32)[None])[0]
@@ -481,6 +516,8 @@ class N3Tree:
             return _N3TreeView(self, key)
 
     def __setitem__(self, key, val):
+        if isinstance(key, list):
+            key = np.array(key)
         if isinstance(key, tuple) and len(key) == 3:
             # Use x,y,z format
             key_tensor = np.array(key, dtype=np.float32)[None]
@@ -592,20 +629,26 @@ class N3Tree:
         """
         Get all leaves of tree
         """
-        return np.stack((self.child[:self.n_internal] == 0).nonzero(), axis=-1)
+        if self._last_all_leaves is None:
+            self._last_all_leaves = np.stack(
+                    (self.child[:self.n_internal] == 0).nonzero(), axis=-1)
+        return self._last_all_leaves
 
     def _transform_coord(self, indices):
         return self.offset + indices * self.invradius
 
-    # Tensor analogy
+    # Array analogy
     @property
     def shape(self):
-        return np.Size((self.n_leaves, self.data_dim))
+        return (self.n_leaves, self.data_dim)
 
-    def dim(self):
+    @property
+    def ndim(self):
         return 2
 
-    def size(self, *args):
-        if len(args) == 1:
-            return self.shape[args[0]]
-        return self.shape
+    @property
+    def size(self):
+        return self.n_leaves * self.data_dim
+
+    def __len__(self):
+        return self.n_leaves
