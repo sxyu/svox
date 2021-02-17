@@ -27,23 +27,29 @@
 #include <cstdint>
 #include "common.cuh"
 
+#define CUDA_N_THREADS 256
+
 namespace {
 namespace device {
-const float C0 = 0.5 * sqrt(1.0 / M_PI);
-const float C1 = sqrt(3 / (4 * M_PI));
-const float C2[] = {0.5f * sqrtf(15.0f / M_PI),
-    -0.5f * sqrtf(15.0f / M_PI),
-    0.25f * sqrtf(5.0f / M_PI),
-    -0.5f * sqrtf(15.0f / M_PI),
-    0.25f * sqrtf(15.0f / M_PI)};
+// SH Coefficients from https://github.com/google/spherical-harmonics
+__device__ __constant__ const float C0 = 0.28209479177387814;
+__device__ __constant__ const float C1 = 0.4886025119029199;
+__device__ __constant__ const float C2[] = {
+    1.0925484305920792,
+    -1.0925484305920792,
+    0.31539156525252005,
+    -1.0925484305920792,
+    0.5462742152960396
+};
 
-const float C3[] = {-0.25f * sqrtf(35 / (2 * M_PI)),
-    0.5f * sqrtf(105 / M_PI),
-    -0.25f * sqrtf(21/(2 * M_PI)),
-    0.25f * sqrtf(7 / M_PI),
-    -0.25f * sqrtf(21/(2 * M_PI)),
-    0.25f * sqrtf(105 / M_PI),
-    -0.25f * sqrtf(35/(2 * M_PI))
+__device__ __constant__ const float C3[] = {
+    -0.5900435899266435,
+    2.890611442640554,
+    -0.4570457994644658,
+    0.3731763325901154,
+    -0.4570457994644658,
+    1.445305721320277,
+    -0.5900435899266435
 };
 
 template <typename scalar_t>
@@ -105,16 +111,18 @@ __device__ __inline__ void trace_ray(
         const scalar_t* __restrict__ origin,
         const scalar_t* __restrict__ dir,
         const scalar_t* __restrict__ vdir,
-        int sh_order,
         scalar_t step_size,
         scalar_t stop_thresh,
         scalar_t background_brightness,
-        scalar_t* __restrict__ out) {
+        int sh_order,
+        float sigma_scale,
+        torch::TensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, int32_t> out) {
 
     scalar_t tmin, tmax;
     scalar_t invdir[3];
     const int tree_N = child.size(1);
     const int data_dim = data.size(4);
+    const int out_data_dim = out.size(0);
 
 #pragma unroll
     for (int i = 0; i < 3; ++i) {
@@ -122,17 +130,22 @@ __device__ __inline__ void trace_ray(
     }
     _dda_unit(origin, invdir, &tmin, &tmax);
 
+    const int rgb_dim = out_data_dim - 1;
     if (tmax < 0 || tmin > tmax) {
         // Ray doesn't hit box
-        out[0] = out[1] = out[2] = background_brightness;
+        for (int j = 0; j < rgb_dim; ++j) {
+            out[j] = background_brightness;
+        }
+        out[rgb_dim] = 0.f;  // Alpha
         return;
     } else {
-        out[0] = out[1] = out[2] = 0.0f;
+        for (int j = 0; j < out_data_dim; ++j) {
+            out[j] = 0.f;
+        }
         scalar_t pos[3], tmp;
-        const scalar_t* tree_val;
         scalar_t sh_mult[16];
         if (sh_order >= 0) {
-            _precalc_sh(sh_order, vdir, sh_mult);
+            _precalc_sh<scalar_t>(sh_order, vdir, sh_mult);
         }
 
         scalar_t light_intensity = 1.f;
@@ -144,8 +157,8 @@ __device__ __inline__ void trace_ray(
                 pos[j] = origin[j] + t * dir[j];
             }
 
-            ::device::query_single_from_root(data, child,
-                    pos, &tree_val, &cube_sz, tree_N, data_dim);
+            scalar_t* tree_val = query_single_from_root<scalar_t>(data, child,
+                        pos, &cube_sz);
 
             scalar_t att;
             scalar_t subcube_tmin, subcube_tmax;
@@ -153,97 +166,210 @@ __device__ __inline__ void trace_ray(
 
             const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
             const scalar_t delta_t = t_subcube + step_size;
-        att = expf(-delta_t * tree_val[data_dim - 1]);
-        const scalar_t weight = light_intensity * (1.f - att);
+            const scalar_t sigma = tree_val[data_dim - 1];
+            if (sigma > 0.f) {
+                att = expf(-delta_t * sigma * sigma_scale);
+                const scalar_t weight = light_intensity * (1.f - att);
 
-        if (sh_order >= 0) {
-#pragma unroll 3
-            for (int t = 0; t < 3; ++ t) {
-                int off = t * n_coe;
-                tmp = sh_mult[0] * tree_val[off] +
-                    sh_mult[1] * tree_val[off + 1] +
-                    sh_mult[2] * tree_val[off + 2];
-#pragma unroll 6
-                for (int i = 3; i < n_coe; ++i) {
-                    tmp += sh_mult[i] * tree_val[off + i];
+                if (sh_order >= 0) {
+                    for (int t = 0; t < rgb_dim; ++ t) {
+                        int off = t * n_coe;
+                        tmp = sh_mult[0] * tree_val[off] +
+                            sh_mult[1] * tree_val[off + 1] +
+                            sh_mult[2] * tree_val[off + 2];
+                        for (int i = 3; i < n_coe; ++i) {
+                            tmp += sh_mult[i] * tree_val[off + i];
+                        }
+                        out[t] += weight / (1.f + expf(-tmp));
+                    }
+                } else {
+                    for (int j = 0; j < rgb_dim; ++j) {
+                        out[j] += tree_val[j] * weight;
+                    }
                 }
-                out[t] += weight / (1.f + expf(-tmp));
-            }
-        } else {
-            for (int j = 0; j < 3; ++j) {
-                out[j] += tree_val[j] * weight;
-            }
-        }
+                out[rgb_dim] += weight;
+                light_intensity *= att;
 
-        light_intensity *= att;
-
-        if (light_intensity < stop_thresh) {
-            // Almost full opacity, stop
-            scalar_t scale = 1.0 / (1.0 - light_intensity);
-            out[0] *= scale;
-            out[1] *= scale;
-            out[2] *= scale;
-            return;
-        }
+                if (light_intensity < stop_thresh) {
+                    // Almost full opacity, stop
+                    scalar_t scale = 1.0 / (1.0 - light_intensity);
+                    for (int j = 0; j < rgb_dim; ++j) {
+                        out[j] *= scale;
+                    }
+                    out[rgb_dim] = 1.f;  // Alpha
+                    return;
+                }
+            }
             t += delta_t;
         }
-        out[0] += light_intensity * background_brightness;
-        out[1] += light_intensity * background_brightness;
-        out[2] += light_intensity * background_brightness;
+        for (int j = 0; j < rgb_dim; ++j) {
+            out[j] += light_intensity * background_brightness;
+        }
     }
 }
 
 template <typename scalar_t>
-__global__ void render_kernel(
+__global__ void render_ray_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        origin,
+        origins,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        dir,
+        dirs,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        vdir,
-    int sh_order,
+        vdirs,
     scalar_t step_size,
     scalar_t stop_thresh,
     scalar_t background_brightness,
+    int sh_order,
+    const scalar_t* __restrict__ offset,
+    const scalar_t* __restrict__ invradius,
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        out) {
-    CUDA_GET_THREAD_ID(tid, dir.size(0));
-
+        out
+        ) {
+    CUDA_GET_THREAD_ID(tid, origins.size(0));
+    scalar_t origin[3] = {origins[tid][0], origins[tid][1], origins[tid][2]};
+    transform_coord<scalar_t>(origin, offset, invradius);
+    scalar_t sigma_scale = 1.0 / *invradius;
     trace_ray<scalar_t>(
         data, child,
-        &origin[tid][0],
-        &dir[tid][0],
-        &vdir[tid][0],
-        sh_order,
+        origin,
+        &dirs[tid][0],
+        &vdirs[tid][0],
         step_size,
         stop_thresh,
         background_brightness,
-        &out[tid][0]);
+        sh_order,
+        sigma_scale,
+        out[tid]);
+}
+
+
+template <typename scalar_t>
+__global__ void render_image_kernel(
+    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+        data,
+    const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
+        child,
+    const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
+        c2w,
+    scalar_t step_size,
+    scalar_t stop_thresh,
+    scalar_t background_brightness,
+    int sh_order,
+    float fx,
+    float fy,
+    int width,
+    int height,
+    const scalar_t* __restrict__ offset,
+    const scalar_t* __restrict__ invradius,
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        out
+        ) {
+    CUDA_GET_THREAD_ID(tid, width * height);
+    int iy = tid / width, ix = tid % width;
+    scalar_t x = (ix - 0.5 * width) / fx;
+    scalar_t y = (iy - 0.5 * height) / fy;
+    scalar_t z = sqrtf(x * x + y * y + 1.0);
+    x /= z; y /= z; z = 1.0f / z;
+
+    scalar_t dir[3];
+    dir[0] = c2w[0][0] * x + c2w[0][1] * y + c2w[0][2] * z;
+    dir[1] = c2w[1][0] * x + c2w[1][1] * y + c2w[1][2] * z;
+    dir[2] = c2w[2][0] * x + c2w[2][1] * y + c2w[2][2] * z;
+    scalar_t origin[3] = {c2w[0][3], c2w[1][3], c2w[2][3]};
+
+    transform_coord<scalar_t>(origin, offset, invradius);
+    scalar_t sigma_scale = 1.0 / *invradius;
+    trace_ray<scalar_t>(
+        data, child,
+        origin,
+        dir,
+        dir,
+        step_size,
+        stop_thresh,
+        background_brightness,
+        sh_order,
+        sigma_scale,
+        out[iy][ix]);
 }
 
 }  // namespace device
+
+
+// Compute RGBA output dimension from input dimension & SH order
+__host__ int get_out_data_dim(int sh_order, int in_data_dim) {
+    int out_data_dim;
+    if (sh_order >= 0) {
+        const int n_coe = (sh_order + 1) * (sh_order + 1);
+        out_data_dim = (in_data_dim - 1) / n_coe + 1;
+    } else {
+        out_data_dim = in_data_dim;
+    }
+    return out_data_dim;
+}
+
 }  // namespace
 
 torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
                             torch::Tensor origins, torch::Tensor dirs,
                             torch::Tensor vdirs, torch::Tensor offset,
                             torch::Tensor invradius, float step_size,
-                            float stop_thresh, float background_brightness) {
-    const auto Q = origins.size(0), K = data.size(4);
+                            float stop_thresh, float background_brightness,
+                            int sh_order) {
+    const auto Q = origins.size(0);
 
-    const int blocks = CUDA_N_BLOCKS_NEEDED(Q);
-    torch::Tensor result = torch::zeros({Q, 3}, indices.options());
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
+    int out_data_dim = get_out_data_dim(sh_order, data.size(4));
+    torch::Tensor result = torch::zeros({Q, out_data_dim}, origins.options());
     AT_DISPATCH_FLOATING_TYPES(origins.type(), __FUNCTION__, [&] {
-            device::render_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+            device::render_ray_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
                 data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                dirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                vdirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                step_size,
+                stop_thresh,
+                background_brightness,
+                sh_order,
                 offset.data<scalar_t>(),
                 invradius.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
+    });
+    CUDA_CHECK_ERRORS;
+    return result;
+}
+
+torch::Tensor _volume_render_image_cuda(
+    torch::Tensor data, torch::Tensor child, torch::Tensor offset,
+    torch::Tensor invradius, torch::Tensor c2w, float fx, float fy, int width,
+    int height, float step_size, float stop_thresh,
+    float background_brightness, int sh_order) {
+    const size_t Q = size_t(width) * height;
+
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
+    int out_data_dim = get_out_data_dim(sh_order, data.size(4));
+    torch::Tensor result = torch::zeros({height, width, out_data_dim}, data.options());
+
+    AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
+            device::render_image_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                step_size,
+                stop_thresh,
+                background_brightness,
+                sh_order,
+                fx,
+                fy,
+                width,
+                height,
+                offset.data<scalar_t>(),
+                invradius.data<scalar_t>(),
+                result.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
     return result;

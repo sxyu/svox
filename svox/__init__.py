@@ -1,5 +1,5 @@
 """
-High-performance PyTorch N^3 tree library.
+CUDA accelerated PyTorch N^3 tree library.
 
 [BSD 2-CLAUSE LICENSE]
 
@@ -27,4 +27,5 @@ CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
 """
-from .svox import *
+from .svox import N3Tree
+from .renderer import VolumeRenderer

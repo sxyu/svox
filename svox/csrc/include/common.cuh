@@ -15,15 +15,23 @@ __device__ __inline__ void clamp_coord(scalar_t* __restrict__ q) {
 }
 
 template <typename scalar_t>
-__device__ __inline__ void query_single_from_root(
-    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+__device__ __inline__ void transform_coord(scalar_t* __restrict__ q,
+                                           const scalar_t* __restrict__ offset,
+                                           const scalar_t* __restrict__ invradius) {
+    for (int i = 0; i < 3; ++i) {
+        q[i] = offset[i] + invradius[0] * q[i];
+    }
+}
+
+template <typename scalar_t>
+__device__ __inline__ scalar_t* query_single_from_root(
+    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
-    scalar_t* __restrict__ xyz_inout, scalar_t* __restrict__ result_out,
+    scalar_t* __restrict__ xyz_inout,
     scalar_t* __restrict__ cube_sz_out) {
     const scalar_t N = child.size(1);
-    const int data_dim = data.size(4);
     clamp_coord<scalar_t>(xyz_inout);
 
     int node_id = 0;
@@ -42,13 +50,12 @@ __device__ __inline__ void query_single_from_root(
 
         const int32_t skip = child[node_id][u][v][w];
         if (skip == 0) {
-            for (int i = 0; i < data_dim; ++i)
-                result_out[i] = data[node_id][u][v][w][i];
-            break;
+            return &data[node_id][u][v][w][0];
         }
         *cube_sz_out *= N;
         node_id += skip;
     }
+    return nullptr;
 }
 
 }  // namespace device
@@ -64,8 +71,7 @@ __device__ __inline__ void query_single_from_root(
 
 #define CUDA_GET_THREAD_ID(tid, Q) const int tid = blockIdx.x * blockDim.x + threadIdx.x; \
                       if (tid >= Q) return
-#define CUDA_N_THREADS 1024
-#define CUDA_N_BLOCKS_NEEDED(Q) ((Q - 1) / CUDA_N_THREADS + 1)
+#define CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS) ((Q - 1) / CUDA_N_THREADS + 1)
 #define CUDA_CHECK_ERRORS \
     cudaError_t err = cudaGetLastError(); \
     if (err != cudaSuccess) \

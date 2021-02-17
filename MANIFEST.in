@@ -3,6 +3,8 @@ include LICENSE.txt
 include MANIFEST.in
 include setup.py
 include svox/svox.py
+include svox/helpers.py
+include svox/renderer.py
 include svox/__init__.py
 include svox/csrc/include/common.cuh
 include svox/csrc/svox.cpp
