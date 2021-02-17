@@ -4,6 +4,7 @@ include MANIFEST.in
 include setup.py
 include svox/svox.py
 include svox/__init__.py
-include svox/csrc/include/common.hpp
+include svox/csrc/include/common.cuh
 include svox/csrc/svox.cpp
 include svox/csrc/svox_kernel.cu
+include svox/csrc/rt_kernel.cu

@@ -36,7 +36,7 @@ try:
     if not hasattr(_C, "query_vertical"):
         warn("CUDA extension svox.csrc could not be loaded! " +
              "Operations will be slow " +
-             "Please do not import svox in the SVE source directory.")
+             "Please do not import svox in the SVOX source directory.")
         _C = None
 except:
     _C = None
@@ -44,10 +44,9 @@ except:
 
 class _SVEQueryVerticalFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, data, child, indices, offset, invradius, padding_mode_c):
-        out = _C.query_vertical(data, child, indices, offset, invradius, padding_mode_c)
+    def forward(ctx, data, child, indices, offset, invradius):
+        out = _C.query_vertical(data, child, indices, offset, invradius)
         ctx.save_for_backward(child, indices, offset, invradius)
-        ctx.padding_mode_c = padding_mode_c
         return out
 
     @staticmethod
@@ -58,26 +57,23 @@ class _SVEQueryVerticalFunction(torch.autograd.Function):
         if ctx.needs_input_grad[0]:
             grad_data = _C.query_vertical_backward(
                     child, indices, grad_out,
-                    offset, invradius,
-                    ctx.padding_mode_c)
+                    offset, invradius)
         else:
             grad_data = None
 
-        return grad_data, None, None, None, None, None
+        return grad_data, None, None, None, None
 
 class _N3TreeView:
     def __init__(self, tree, key):
         self.tree = tree
+        if torch.is_tensor(key) and key.ndim == 2 and key.shape[1] == 3:
+            val, target = tree.get(key, want_node_ids=True)
+            key = tree._reverse_leaf_search(target)
         self.key = key
         self._value = None;
 
     def __repr__(self):
-        return "N3TreeView(" + repr(self.value()) + ")"
-
-    def value(self):
-        if self._value is None:
-            self._value = self.tree.values().__getitem__(self.key)
-        return self._value
+        return "N3TreeView(" + repr(self.value) + ")"
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
         if kwargs is None:
@@ -85,33 +81,72 @@ class _N3TreeView:
         new_args = []
         for arg in args:
             if isinstance(arg, _N3TreeView):
-                new_args.append(arg.value())
+                new_args.append(arg.value)
             else:
                 new_args.append(arg)
         return func(*new_args, **kwargs)
 
     def set(self, value):
-        self.tree._push_to_leaf()
         leaf_node = self.tree._all_leaves()
-        key1 = self.key[0] if isinstance(self.key, tuple) else self.key
-        leaf_node = leaf_node.__getitem__(key1)
+        leaf_node = leaf_node.__getitem__(self._leaf_key())
         if isinstance(self.key, tuple):
             leaf_node_sel = (*leaf_node.T, *self.key[1:])
         else:
             leaf_node_sel = (*leaf_node.T,)
         self.tree.data.data[leaf_node_sel] = value
 
+    def refine(self):
+        return self.tree.refine(mask=self.mask)
+
+    @property
+    def value(self):
+        if self._value is None:
+            self._value = self.tree.values().__getitem__(self.key)
+        return self._value
+
     @property
     def shape(self):
-        return self.value().shape
+        return self.value.shape
+
+    @property
+    def ndim(self):
+        return 2
+
+    @property
+    def mask(self):
+        """
+        Get leaf mask (1D)
+        """
+        n_leaves = self.tree.n_leaves
+        result = np.zeros((n_leaves,), dtype=np.bool)
+        result.__setitem__(self._leaf_key(), True)
+        return result
+
+    @property
+    def depths(self):
+        return self.tree.depths(self._leaf_key())
+    
+    @property
+    def lengths(self):
+        return self.tree.lengths(self._leaf_key())
+
+    @property
+    def corners(self):
+        return self.tree.corners(self._leaf_key())
+
+    def sample(self, n_samples):
+        return self.tree.sample(n_samples, self._leaf_key())
 
     @property
     def requires_grad(self):
-        return self.value().requires_grad
+        return self.value.requires_grad
 
     @requires_grad.setter
     def requires_grad(self, value):
-        self.value().requires_grad = value
+        self.value.requires_grad = value
+
+    def _leaf_key(self):
+        return self.key[0] if isinstance(self.key, tuple) else self.key
 
 # Redirect functions to Tensor
 def _redirect_funcs():
@@ -120,12 +155,11 @@ def _redirect_funcs():
                    '__rdiv__', '__eq__', '__ne__', '__ge__', '__gt__', '__le__',
                    '__lt__', '__abs__', '__floor__', '__ceil__', '__pos__', '__neg__',
                    '__round__',
-                   'item', 'size', 'dim', 'detach', 'cpu', 'cuda', 'to',
+                   'item', 'size', 'dim', 'numel', 'detach', 'cpu', 'cuda', 'to',
                    'float', 'double', 'int', 'long']
     def redirect_func(redir_func):
         def redir_impl(self, *args, **kwargs):
-            val = self.value()
-            return getattr(self.value(), redir_func)(*args, **kwargs)
+            return getattr(self.value, redir_func)(*args, **kwargs)
         setattr(_N3TreeView, redir_func, redir_impl)
     for redir_func in redir_funcs:
         redirect_func(redir_func)
@@ -133,10 +167,13 @@ _redirect_funcs()
 
 class N3Tree(nn.Module):
     """
-    N^3 tree prototype implementaton
+    High-performance PyTorch N^3 tree library with
+    optional CUDA acceleration.
+    N = branching factor at each interior node.
+    (c) Alex Yu 2021
     """
-    def __init__(self, N=4, data_dim=4, depth_limit=4,
-            init_reserve=4, init_refine=0, geom_resize_fact=1.5, padding_mode="zeros",
+    def __init__(self, N=2, data_dim=4, depth_limit=10,
+            init_reserve=4, init_refine=0, geom_resize_fact=1.5,
             radius=0.5, center=[0.5, 0.5, 0.5], map_location="cpu"):
         """
         :param N branching factor N
@@ -145,7 +182,6 @@ class N3Tree(nn.Module):
         :param init_reserve amount of nodes to reserve initially
         :param init_refine number of times to refine entire tree initially
         :param geom_resize_fact geometric resizing factor
-        :param padding_mode padding mode for coords outside grid, zeros | border
         :param radius 1/2 side length of cube
         :param center center of space
         WARNING: nn.Parameters can change due to refinement, if refine returns True
@@ -154,8 +190,8 @@ class N3Tree(nn.Module):
         super().__init__()
         assert N >= 2
         assert depth_limit >= 0
-        self.N = N
-        self.data_dim = data_dim
+        self.N : int = N
+        self.data_dim : int = data_dim
 
         if init_refine > 0:
             for i in range(1, init_refine + 1):
@@ -178,10 +214,7 @@ class N3Tree(nn.Module):
 
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
-        self.padding_mode = padding_mode
-
-        if _C is not None:
-            self.padding_mode_c = _C.parse_padding_mode(padding_mode)
+        self._last_all_leaves = None
 
         self.refine(repeats=init_refine)
 
@@ -203,19 +236,13 @@ class N3Tree(nn.Module):
 
         if not cuda or _C is None or not self.data.is_cuda:
             warn("Using slow assignment")
-            indices = self._transform_coord(indices)
-
-            if self.padding_mode == "zeros":
-                outside_mask = ((indices >= 1.0) | (indices < 0.0)).any(dim=-1)
-                indices = indices[~outside_mask]
+            indices = self.world2tree(indices)
 
             n_queries, _ = indices.shape
             indices.clamp_(0.0, 1.0 - 1e-10)
             ind = indices.clone()
 
             node_ids = torch.zeros(n_queries, dtype=torch.long, device=indices.device)
-            accum = torch.zeros((n_queries, self.data_dim), dtype=torch.float32,
-                                  device=indices.device)
             remain_mask = torch.ones(n_queries, dtype=torch.bool, device=indices.device)
             while remain_mask.any():
                 ind_floor = torch.floor(ind[remain_mask] * self.N)
@@ -229,13 +256,11 @@ class N3Tree(nn.Module):
                 nonterm_mask = torch.zeros(n_queries, dtype=torch.bool, device=indices.device)
                 nonterm_mask[remain_mask] = nonterm_partial_mask
 
-                accum[nonterm_mask] += vals[nonterm_partial_mask]
-
                 node_ids[remain_mask] += deltas
                 ind[remain_mask] = ind[remain_mask] * self.N - ind_floor
 
                 term_mask = remain_mask & ~nonterm_mask
-                vals[~nonterm_partial_mask] = values[term_mask] - accum[term_mask]
+                vals[~nonterm_partial_mask] = values[term_mask]
                 self.data.data[sel] = vals
 
                 remain_mask &= nonterm_mask
@@ -243,18 +268,17 @@ class N3Tree(nn.Module):
             _C.assign_vertical(self.data, self.child, indices,
                                values,
                                self.offset,
-                               self.invradius,
-                               self.padding_mode_c)
+                               self.invradius)
 
-    def get(self, indices, cuda=True):
+    def get(self, indices, cuda=True, want_node_ids=False):
         """
         Get tree values,
         :param indices (Q, 3)
         """
         indices = indices.to(device=self.data.device)
-        return self.forward(indices, cuda=cuda)
+        return self.forward(indices, cuda=cuda, want_node_ids=want_node_ids)
 
-    def forward(self, indices, cuda=True):
+    def forward(self, indices, cuda=True, want_node_ids=False):
         """
         Get tree values,
         :param indices (Q, 3)
@@ -262,58 +286,145 @@ class N3Tree(nn.Module):
         assert not indices.requires_grad  # Grad wrt indices not supported
         assert len(indices.shape) == 2
 
-        if not cuda or _C is None or not self.data.is_cuda:
-            warn("Using slow query")
-            indices = self._transform_coord(indices)
+        if not cuda or _C is None or not self.data.is_cuda or want_node_ids:
+            if not want_node_ids:
+                warn("Using slow query")
+            indices = self.world2tree(indices)
 
-            if self.padding_mode == "zeros":
-                outside_mask = ((indices >= 1.0) | (indices < 0.0)).any(dim=-1)
             indices.clamp_(0.0, 1.0 - 1e-10)
 
             n_queries, _ = indices.shape
-            ind = indices.clone()
             node_ids = torch.zeros(n_queries, dtype=torch.long, device=indices.device)
-            result = torch.zeros((n_queries, self.data_dim), dtype=torch.float32,
+            result = torch.empty((n_queries, self.data_dim), dtype=torch.float32,
                                   device=indices.device)
-            remain_mask = torch.ones(n_queries, dtype=torch.bool, device=indices.device)
-            if self.padding_mode == "zeros":
-                remain_mask &= ~outside_mask
+            #  remain_mask = torch.ones(n_queries, dtype=torch.bool, device=indices.device)
+            remain_indices = torch.arange(n_queries, dtype=torch.long, device=indices.device)
+            ind = indices.clone()
 
-            while remain_mask.any():
-                ind_floor = torch.floor(ind[remain_mask] * self.N)
+            if want_node_ids:
+                subidx = torch.zeros((n_queries, 3), dtype=torch.long, device=indices.device)
+
+            while remain_indices.numel():
+                ind *= self.N
+                ind_floor = torch.floor(ind)
                 ind_floor.clamp_max_(self.N - 1)
-                sel = (node_ids[remain_mask], *(ind_floor.long().T),)
+                ind -= ind_floor
+
+                sel = (node_ids[remain_indices], *(ind_floor.long().T),)
 
                 deltas = self.child[sel]
+
+                term_mask = deltas == 0
+                term_indices = remain_indices[term_mask]
+
                 vals = self.data[sel]
+                result[term_indices] = vals[term_mask]
+                if want_node_ids:
+                    subidx[term_indices] = ind_floor.to(torch.long)[term_mask]
 
-                nonterm_partial_mask = deltas != 0
-                nonterm_mask = torch.zeros(n_queries, dtype=torch.bool, device=indices.device)
-                nonterm_mask[remain_mask] = nonterm_partial_mask
+                node_ids[remain_indices] += deltas
+                remain_indices = remain_indices[~term_mask]
+                ind = ind[~term_mask] 
 
-                result[remain_mask] += vals
-
-                node_ids[remain_mask] += deltas
-                ind[remain_mask] = ind[remain_mask] * self.N - ind_floor
-                remain_mask = remain_mask & nonterm_mask
-
-            if self.padding_mode == "zeros":
-                result[outside_mask] = 0.0
+            if want_node_ids:
+                txyz = torch.cat([node_ids[:, None], subidx], axis=-1)
+                return result, self._pack_index(txyz)
 
             return result
         else:
             return _SVEQueryVerticalFunction.apply(
                     self.data, self.child, indices,
-                    self.offset, self.invradius,
-                    self.padding_mode_c)
+                    self.offset, self.invradius)
+
+    # Special leaf data accessors (Implemented in Python only)
+    # Integrated with _N3TreeView
+    def values(self, sel=None):
+        """
+        Get a list of all leaf values in tree
+        :return (n_leaves, data_dim)
+        """
+        leaf_node = self._all_leaves()
+        if sel is not None:
+            leaf_node = leaf_node[sel]
+        leaf_node_sel = (*leaf_node.T,)
+        data = self.data.data[leaf_node_sel]
+        return data
+
+    def depths(self, sel=None):
+        """
+        Get a list of leaf depths in tree,
+        in same order as values(), corners().
+        Root is at depth -1. Any children of
+        root will have depth 0, etc.
+        :return (n_leaves) int32
+        """
+        leaf_node = self._all_leaves()
+        if sel is not None:
+            leaf_node = leaf_node[sel]
+            if leaf_node.ndim == 1:
+                leaf_node = leaf_node[None]
+        return self.parent_depth[leaf_node[:, 0], 1]
+
+    def lengths(self, sel=None):
+        """
+        Get a list of leaf side lenghts in tree,
+        in same order as values(), corners(), depths()
+        Root is at depth -1. Any children of
+        root will have depth 0, etc.
+        (NOTE: unscaled by center/invradius, will be in range [0, 1],
+        please use world2tree / tree2world)
+        :return (n_leaves) float
+        """
+        return 2.0 ** (-self.depths(sel).float() - 1.0)
+
+    def corners(self, sel=None):
+        """
+        Get a list of leaf lower xyz corners in tree,
+        in same order as values(), depths().
+        (NOTE: unscaled by center/invradius, will be in range [0, 1],
+        please use world2tree / tree2world)
+        :return (n_leaves, 3)
+        """
+        leaf_node = self._all_leaves()
+        if sel is not None:
+            leaf_node = leaf_node[sel]
+            if leaf_node.ndim == 1:
+                leaf_node = leaf_node[None]
+        corners = self._calc_corners(leaf_node)
+        return corners
+
+    def sample(self, n_samples, sel=None):
+        """
+        Sample n_samples points in each leaf voxel
+        (NOTE: unscaled by center/invradius, will be in range [0, 1],
+        please use world2tree / tree2world)
+        :param n_samples samples per voxel
+        :param sel leaf selector to choose voxels to sample.
+        If none (default), samples all leaves
+        :return (n_leaves, n_samples, 3)
+        """
+        corn = self.corners(sel=sel)[:, None]
+        sz = 2.0 ** (-self.depths(sel=sel).float() - 1)
+        u = torch.rand((corn.shape[0], n_samples, 3)) * sz[:, None, None]
+        return u + corn
+
+    def snap(self, indices):
+        """
+        Snap indices to lowest corner of current leaf voxel
+        (NOTE: unscaled by center/invradius, will be in range [0, 1],
+        please use world2tree / tree2world)
+        :param indices (B, 3) indices to snap
+        :return (B, 3)
+        """
+        _, node_ids = self.get(indices, want_node_ids=True)
+        leaf_ids = self._reverse_leaf_search(node_ids)
+        return self.corners(sel=leaf_ids)
 
     # In-place modification helpers
     def randn_(self, mean=0.0, std=1.0):
         """
         Set all values to random normal
-        Side effect: pushes values to leaf.
         """
-        self._push_to_leaf()
         leaf_node = self._all_leaves()  # NNC, 4
         leaf_node_sel = (*leaf_node.T,)
         self.data.data[leaf_node_sel] = torch.randn_like(
@@ -322,9 +433,7 @@ class N3Tree(nn.Module):
     def clamp_(self, min, max, dim=None):
         """
         Clamp all values to random normal
-        Side effect: pushes values to leaf.
         """
-        self._push_to_leaf()
         leaf_node = self._all_leaves()  # NNC, 4
         if dim is None:
             leaf_node_sel = (*leaf_node.T,)
@@ -332,12 +441,12 @@ class N3Tree(nn.Module):
             leaf_node_sel = (*leaf_node.T, torch.ones_like(leaf_node[..., 0]) * dim)
         self.data.data[leaf_node_sel] = self.data.data[leaf_node_sel].clamp(min, max)
 
-    # Leaf refinement methods
-    def refine(self, dim=-1, thresh=None, mask=None, max_refine=None, repeats=1):
+    # Leaf refinement & memory management methods
+    def refine(self, repeats=1, dim=-1, thresh=None, mask=None, max_refine=None):
         """
         Refine each leaf node, optionally filtering by value at dimension 'dim' >= 'thresh'.
         Respects depth_limit.
-        Side effect: pushes values to leaf.
+        :param repeats number of times to repeat
         :param dim dimension to check (used if thresh != None). Can be negative (like -1)
         :param thresh threshold for dimension.
         :param mask leaf mask
@@ -353,8 +462,7 @@ class N3Tree(nn.Module):
                 filled = self.n_internal
                 good_mask = self.child[:filled] == 0
                 if thresh is not None:
-                    self._push_to_leaf()
-                    good_mask &= (self.data[:filled, ..., dim] >= thresh)
+                    good_mask &= (self.data.data[:filled, ..., dim] >= thresh)
 
                 good_mask &= (self.parent_depth[:filled, -1] < self.depth_limit)[:, None, None, None]
 
@@ -388,6 +496,8 @@ class N3Tree(nn.Module):
 
                 self.child[filled:new_filled] = 0
                 self.child[leaf_node_sel] = new_idxs - leaf_node[:, 0].to(torch.int32)
+                self.data.data[filled:new_filled] = self.data.data[
+                        leaf_node_sel][:, None, None, None]
                 self.parent_depth[filled:new_filled, 0] = self._pack_index(leaf_node)  # parent
                 self.parent_depth[filled:new_filled, 1] = self.parent_depth[
                         leaf_node[:, 0], 1] + 1  # depth
@@ -395,6 +505,8 @@ class N3Tree(nn.Module):
                         self.max_depth.item()))
 
                 self._n_internal += num_nc
+        if repeats > 0:
+            self._last_all_leaves = None
         return resized
 
     def _refine_at(self, intnode_idx, xyzi):
@@ -425,8 +537,11 @@ class N3Tree(nn.Module):
         self.parent_depth[filled, 0] = self._pack_index(torch.tensor(
             [[intnode_idx, xi, yi, zi]], dtype=torch.int32))[0]
         self.parent_depth[filled, 1] = depth
+        self.data.data[filled, :, :, :] = self.data.data[intnode_idx, xi, yi, zi]
+        self.data.data[intnode_idx, xi, yi, zi] = 0
         self.max_depth = max(self.max_depth, depth)
         self._n_internal += 1
+        self._last_all_leaves = None
         return resized
 
     def shrink_to_fit(self):
@@ -471,65 +586,23 @@ class N3Tree(nn.Module):
         """
         return self.parent_depth.shape[0]
 
-    def values(self, depth=None):
-        """
-        Get a list of all leaf values in tree
-        Side effect: pushes values to leaf.
-        :return (n_leaves, data_dim)
-        """
-        self._push_to_leaf()
-        leaf_node = self._all_leaves()
-        leaf_node_sel = (*leaf_node.T,)
-        data = self.data[leaf_node_sel]
-        if depth is not None:
-            depths = self.parent_depth[leaf_node[:, 0], 1]
-            data = data[depths == depth]
-        return data
-
-    @property
-    def depth(self):
-        return self.depths()
-
-    def depths(self):
-        """
-        Get a list of leaf depths in tree,
-        in same order as values(), corners().
-        Root is at depth 0.
-        :return (n_leaves) int32
-        """
-        leaf_node = self._all_leaves()
-        return self.parent_depth[leaf_node[:, 0], 1]
-
-    def corners(self):
-        """
-        Get a list of leaf lower xyz corners in tree,
-        in same order as values(), depths().
-        :return (n_leaves, 3)
-        """
-        leaf_node = self._all_leaves()
-        corners = self._calc_corners(leaf_node)
-        return corners
-
-    def savez(self, path):
+    # Persistence
+    def savez(self, path, cpp=False):
         data = {
             "data_dim" : self.data_dim,
             "child" : self.child.cpu(),
-            "parent_depth" : self.parent_depth.cpu(),
             "n_internal" : self._n_internal.cpu().item(),
             "max_depth" : self.max_depth.cpu().item(),
             "invradius" : self.invradius.cpu().item(),
             "offset" : self.offset.cpu(),
             "depth_limit": self.depth_limit,
             "geom_resize_fact": self.geom_resize_fact,
-            "padding_mode": self.padding_mode
+            "data": self.data.data.cpu().numpy().astype(np.float16)
         }
-        if self.data_dim != 3 and self.data_dim != 4:
-            data["data"] = self.data.data.cpu()
-        else:
-            import imageio
-            data_path = osp.splitext(path)[0] + '_data.exr'
-            imageio.imwrite(data_path, self.data.data.cpu().reshape(-1,
-                self.N ** 2, self.data_dim))
+        if not cpp:
+            data.update({
+                "parent_depth" : self.parent_depth.cpu(),
+                })
         np.savez_compressed(path, **data)
 
     def loadz(self, path):
@@ -545,19 +618,7 @@ class N3Tree(nn.Module):
         self.offset = torch.from_numpy(z["offset"]).to(device)
         self.depth_limit = int(z["depth_limit"])
         self.geom_resize_fact = float(z["geom_resize_fact"])
-        self.padding_mode = str(z["padding_mode"])
-        if _C is not None:
-            self.padding_mode_c = _C.parse_padding_mode(self.padding_mode)
-        if self.data_dim != 3 and self.data_dim != 4:
-            self.data.data = torch.from_numpy(z["data"]).to(device)
-        else:
-            import imageio
-            data_path = osp.splitext(path)[0] + '_data.exr'
-            self.data.data = torch.from_numpy(
-                        imageio.imread(data_path).reshape(
-                            -1, self.N, self.N, self.N, self.data_dim
-                        )
-                    ).to(device)
+        self.data.data = torch.from_numpy(z["data"].astype(np.float32)).to(device)
 
     # Magic
     def __repr__(self):
@@ -601,30 +662,6 @@ class N3Tree(nn.Module):
         return self
 
     # Internal utils
-    def _push_to_leaf(self):
-        """
-        Push tree values to leaf
-        """
-        filled = self.n_internal
-
-        leaf_node = (self.child[:filled] == 0).nonzero(as_tuple=False)  # NNC, 4
-        curr = leaf_node.clone()
-
-        while True:
-            good_mask = curr[:, 0] != 0
-            if not good_mask.any():
-                break
-            curr = curr[good_mask]
-            leaf_node = leaf_node[good_mask]
-
-            curr = self._unpack_index(self.parent_depth[curr[:, 0], 0].long())
-            self.data.data[(*leaf_node.T,)] += self.data[(*curr.T,)]
-
-        with_child = self.child[:filled].nonzero(as_tuple=False)  # NNC, 4
-        with_child_sel = (*with_child.T,)
-        self.data.data[with_child_sel] = 0.0
-
-
     def _calc_corners(self, nodes):
         """
         Compute lower bbox corners for given nodes
@@ -689,18 +726,38 @@ class N3Tree(nn.Module):
         """
         Get all leaves of tree
         """
-        return (self.child[:self.n_internal] == 0).nonzero(as_tuple=False)
+        if self._last_all_leaves is None:
+            self._last_all_leaves = (self.child[
+                :self.n_internal] == 0).nonzero(as_tuple=False)
+        return self._last_all_leaves
 
-    def _transform_coord(self, indices):
+    def _reverse_leaf_search(self, target):
+        packed_sorted = self._pack_index(self._all_leaves())
+        return torch.searchsorted(packed_sorted, target)
+
+    def world2tree(self, indices):
         return torch.addcmul(self.offset, indices, self.invradius)
+
+    def tree2world(self, indices):
+        return (indices  - self.offset) / self.invradius
 
     # Tensor analogy
     @property
     def shape(self):
         return torch.Size((self.n_leaves, self.data_dim))
 
+    @property
+    def ndim(self):
+        return 2
+
     def dim(self):
         return 2
+
+    def numel(self):
+        return self.n_leaves * self.data_dim
+
+    def __len__(self):
+        return self.n_leaves
 
     def size(self, *args):
         if len(args) == 1:
