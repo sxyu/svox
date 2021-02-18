@@ -260,44 +260,49 @@ __device__ __inline__ void trace_ray_backward(
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + step_size;
                 const scalar_t sigma = tree_val[data_dim - 1];
+                if (sigma > 0.0) {
+                    att = expf(-delta_t * sigma * delta_scale);
+                    const scalar_t weight = light_intensity * (1.f - att);
 
-                att = expf(-delta_t * sigma * delta_scale);
-                const scalar_t weight = light_intensity * (1.f - att);
-
-                float total_color = 0.f;
-                if (sh_order >= 0) {
-                    for (int t = 0; t < out_data_dim; ++ t) {
-                        int off = t * n_coe;
-                        scalar_t tmp = 0.0;
-                        for (int i = 0; i < n_coe; ++i) {
-                            tmp += sh_mult[i] * tree_val[off + i];
+                    float total_color = 0.f;
+                    if (sh_order >= 0) {
+                        for (int t = 0; t < out_data_dim; ++ t) {
+                            int off = t * n_coe;
+                            scalar_t tmp = 0.0;
+                            for (int i = 0; i < n_coe; ++i) {
+                                tmp += sh_mult[i] * tree_val[off + i];
+                            }
+                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
+                            const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
+                            for (int i = 0; i < n_coe; ++i) {
+                                const scalar_t toadd = weight * sh_mult[i] *
+                                    grad_sigmoid * grad_out[t];
+                                atomicAdd(&grad_tree_val[off + i],
+                                        toadd);
+                            }
+                            total_color += sigmoid * grad_out[t];
                         }
-                        const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
-                        const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
-                        for (int i = 0; i < n_coe; ++i) {
-                            atomicAdd(&grad_tree_val[off + i],
-                                    weight * sh_mult[i] *
-                                    grad_sigmoid * grad_out[t]);
+                    } else {
+                        for (int j = 0; j < out_data_dim; ++j) {
+                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-tree_val[j]));
+                            const scalar_t toadd = weight * sigmoid * (1.f - sigmoid) * grad_out[j];
+                            atomicAdd(&grad_tree_val[j], toadd);
+                            total_color += sigmoid * grad_out[j];
                         }
-                        total_color += sigmoid * grad_out[t];
                     }
-                } else {
-                    for (int j = 0; j < out_data_dim; ++j) {
-                        const scalar_t sigmoid = 1.0 / (1.0 + expf(-tree_val[j]));
-                        atomicAdd(&grad_tree_val[j],
-                                weight * sigmoid * (1.f - sigmoid) * grad_out[j]);
-                        total_color += sigmoid * grad_out[j];
-                    }
+                    light_intensity *= att;
+                    accum += weight * total_color;
                 }
-                light_intensity *= att;
-                accum += weight * total_color;
                 t += delta_t;
             }
-            accum += light_intensity * background_brightness * out_data_dim;
+            float total_grad = 0.f;
+            for (int j = 0; j < out_data_dim; ++j)
+                total_grad += grad_out[j];
+            accum += light_intensity * background_brightness * total_grad;
         }
         // PASS 2
         {
-            scalar_t accum_lo = 0.0;
+            // scalar_t accum_lo = 0.0;
             scalar_t light_intensity = 1.f, t = tmin, cube_sz;
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = origin[j] + t * dir[j];
@@ -314,32 +319,33 @@ __device__ __inline__ void trace_ray_backward(
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + step_size;
                 const scalar_t sigma = tree_val[data_dim - 1];
+                if (sigma > 0.0) {
+                    att = expf(-delta_t * sigma * delta_scale);
+                    const scalar_t weight = light_intensity * (1.f - att);
 
-                att = expf(-delta_t * sigma * delta_scale);
-                const scalar_t weight = light_intensity * (1.f - att);
-
-                float total_color = 0.f;
-                if (sh_order >= 0) {
-                    for (int t = 0; t < out_data_dim; ++ t) {
-                        int off = t * n_coe;
-                        scalar_t tmp = 0.0;
-                        for (int i = 0; i < n_coe; ++i) {
-                            tmp += sh_mult[i] * tree_val[off + i];
+                    float total_color = 0.f;
+                    if (sh_order >= 0) {
+                        for (int t = 0; t < out_data_dim; ++ t) {
+                            int off = t * n_coe;
+                            scalar_t tmp = 0.0;
+                            for (int i = 0; i < n_coe; ++i) {
+                                tmp += sh_mult[i] * tree_val[off + i];
+                            }
+                            total_color += 1.0 / (1.0 + expf(-tmp)) * grad_out[t];
                         }
-                        total_color += 1.0 / (1.0 + expf(-tmp)) * grad_out[t];
+                    } else {
+                        for (int j = 0; j < out_data_dim; ++j) {
+                            total_color += 1.0 / (1.0 + expf(-tree_val[j])) * grad_out[j];
+                        }
                     }
-                } else {
-                    for (int j = 0; j < out_data_dim; ++j) {
-                        total_color += 1.0 / (1.0 + expf(-tree_val[j])) * grad_out[j];
-                    }
+                    light_intensity *= att;
+                    accum -= weight * total_color;
+                    atomicAdd(
+                            &grad_tree_val[out_data_dim],
+                            delta_t * delta_scale * (
+                                total_color * light_intensity - accum)
+                            );
                 }
-                light_intensity *= att;
-                accum_lo += weight * total_color;
-                atomicAdd(
-                    &grad_tree_val[out_data_dim],
-                    delta_t * delta_scale * (total_color * light_intensity
-                        - accum + accum_lo)
-                );
                 t += delta_t;
             }
         }
@@ -677,7 +683,6 @@ torch::Tensor _volume_render_image_backward_cuda(
                 invradius.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
     });
-    std::cout << "R" << result << "\n";
     CUDA_CHECK_ERRORS;
     return result;
 }
