@@ -163,6 +163,7 @@ torch::Tensor volume_render(torch::Tensor data, torch::Tensor child,
     CHECK_INPUT(invradius);
     TORCH_CHECK(dirs.size(0) == vdirs.size(0));
     TORCH_CHECK(dirs.size(0) == origins.size(0));
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
     return _volume_render_cuda(data, child, origins, dirs, vdirs, offset,
                                invradius, step_size, background_brightness,
                                sh_order, fast);
@@ -180,6 +181,7 @@ torch::Tensor volume_render_image(torch::Tensor data, torch::Tensor child,
     CHECK_INPUT(invradius);
     TORCH_CHECK(c2w.ndimension() == 2);
     TORCH_CHECK(c2w.size(1) == 4);
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
     return _volume_render_image_cuda(data, child, offset, invradius, c2w, fx,
                                      fy, width, height, step_size,
                                      background_brightness, sh_order, fast);
@@ -203,6 +205,7 @@ torch::Tensor volume_render_backward(torch::Tensor data, torch::Tensor child,
     TORCH_CHECK(dirs.size(0) == vdirs.size(0));
     TORCH_CHECK(dirs.size(0) == origins.size(0));
     TORCH_CHECK(grad_output.ndimension() == 2);
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
     return _volume_render_backward_cuda(data, child, grad_output, origins, dirs,
                                         vdirs, offset, invradius, step_size,
                                         background_brightness, sh_order);
@@ -221,6 +224,7 @@ torch::Tensor volume_render_image_backward(
     TORCH_CHECK(c2w.ndimension() == 2);
     TORCH_CHECK(c2w.size(1) == 4);
     TORCH_CHECK(grad_output.ndimension() == 3);
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
     return _volume_render_image_backward_cuda(
         data, child, grad_output, offset, invradius, c2w, fx, fy, width, height,
         step_size, background_brightness, sh_order);

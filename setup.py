@@ -5,7 +5,7 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 ROOT_DIR = osp.dirname(osp.abspath(__file__))
 
-__version__ = '0.2.3'
+__version__ = '0.2.4'
 
 CUDA_FLAGS = []
 INSTALL_REQUIREMENTS = []
