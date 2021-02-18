@@ -1,39 +1,40 @@
+#  [BSD 2-CLAUSE LICENSE]
+#
+#  Copyright Alex Yu 2021
+#
+#  Redistribution and use in source and binary forms, with or without
+#  modification, are permitted provided that the following conditions are met:
+#
+#  1. Redistributions of source code must retain the above copyright notice,
+#  this list of conditions and the following disclaimer.
+#
+#  2. Redistributions in binary form must reproduce the above copyright notice,
+#  this list of conditions and the following disclaimer in the documentation
+#  and/or other materials provided with the distribution.
+#
+#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+#  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+#  IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+#  ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+#  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+#  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+#  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+#  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+#  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+#  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+#  POSSIBILITY OF SUCH DAMAGE.
 """
-[BSD 2-CLAUSE LICENSE]
-
-Copyright Alex Yu 2021
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-1. Redistributions of source code must retain the above copyright notice,
-this list of conditions and the following disclaimer.
-
-2. Redistributions in binary form must reproduce the above copyright notice,
-this list of conditions and the following disclaimer in the documentation
-and/or other materials provided with the distribution.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
-LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
-CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
-SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
-INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-POSSIBILITY OF SUCH DAMAGE.
+Sparse voxel N^3 tree
 """
 
 import os.path as osp
 import torch
 import numpy as np
 from torch import nn, autograd
-from svox.helpers import _N3TreeView, get_c_extension
+from svox.helpers import _N3TreeView, _get_c_extension
 from warnings import warn
 
-_C = get_c_extension()
+_C = _get_c_extension()
 
 class _QueryVerticalFunction(autograd.Function):
     @staticmethod
@@ -59,24 +60,30 @@ class _QueryVerticalFunction(autograd.Function):
 
 class N3Tree(nn.Module):
     """
-    PyTorch N^3 tree library with
-    optional CUDA acceleration.
-    N = branching factor at each interior node.
+    PyTorch :math:`N^3`-tree library with CUDA acceleration.
+    By :math:`N^3`-tree we mean a 3D tree with branching factor N at each interior node,
+    where :math:`N=2` is the familiar octree.
+
+.. warning::
+    `nn.Parameters` can change due to refinement. If any refine() call returns True,
+    please re-make any optimizers
     """
     def __init__(self, N=2, data_dim=4, depth_limit=10,
             init_reserve=1, init_refine=0, geom_resize_fact=1.5,
             radius=0.5, center=[0.5, 0.5, 0.5], map_location="cpu"):
         """
-        :param N branching factor N
-        :param data_dim size of data stored at each leaf
-        :param depth_limit maximum depth of tree to stop branching/refining
-        :param init_reserve amount of nodes to reserve initially
-        :param init_refine number of times to refine entire tree initially
-        :param geom_resize_fact geometric resizing factor
-        :param radius 1/2 side length of cube
-        :param center center of space
-        WARNING: nn.Parameters can change due to refinement, if refine returns True
-        please re-make any optimizers
+        Construct N^3 Tree
+
+        :param N: int branching factor N
+        :param data_dim: int size of data stored at each leaf
+        :param depth_limit: int maximum depth of tree to stop branching/refining
+        :param init_reserve: int amount of nodes to reserve initially
+        :param init_refine: int number of times to refine entire tree initially
+        :param geom_resize_fact: float geometric resizing factor
+        :param radius: float 1/2 side length of cube
+        :param center: list center of space
+        :param map_location: str device to put data
+
         """
         super().__init__()
         assert N >= 2
@@ -114,8 +121,13 @@ class N3Tree(nn.Module):
     def set(self, indices, values, cuda=True):
         """
         Set tree values,
-        :param indices (Q, 3)
-        :param values (Q, K)
+
+        :param indices: torch.Tensor (Q, 3)
+        :param values: torch.Tensor (Q, K)
+        :param cuda: whether to use CUDA kernel if available. If false,
+                     uses only PyTorch version.
+
+.. warning::
         Beware: If multiple indices point to same leaf node,
         only one of them will be taken
         """
@@ -161,18 +173,18 @@ class N3Tree(nn.Module):
                                self.offset,
                                self.invradius)
 
-    def get(self, indices, cuda=True, want_node_ids=False):
+    def forward(self, indices, cuda=True, want_node_ids=False, world=True):
         """
-        Get tree values,
-        :param indices (Q, 3) the points
-        """
-        indices = indices.to(device=self.data.device)
-        return self.forward(indices, cuda=cuda, want_node_ids=want_node_ids)
+        Get tree values. Differentiable.
 
-    def forward(self, indices, cuda=True, want_node_ids=False):
-        """
-        Get tree values,
-        :param indices (Q, 3) the points
+        :param indices: :math:`(Q, 3)` the points
+        :param cuda: whether to use CUDA kernel if available. If false,
+                     uses only PyTorch version.
+        :param want_node_ids: if true, returns node ID for each query.
+        :param world: use world space instead of :math:`[0,1]^3`, default True
+
+        :return: (Q, data_dim), [(Q)]
+
         """
         assert not indices.requires_grad  # Grad wrt indices not supported
         assert len(indices.shape) == 2
@@ -180,7 +192,8 @@ class N3Tree(nn.Module):
         if not cuda or _C is None or not self.data.is_cuda or want_node_ids:
             if not want_node_ids:
                 warn("Using slow query")
-            indices = self.world2tree(indices)
+            if world:
+                indices = self.world2tree(indices)
 
             indices.clamp_(0.0, 1.0 - 1e-10)
 
@@ -215,7 +228,7 @@ class N3Tree(nn.Module):
 
                 node_ids[remain_indices] += deltas
                 remain_indices = remain_indices[~term_mask]
-                ind = ind[~term_mask] 
+                ind = ind[~term_mask]
 
             if want_node_ids:
                 txyz = torch.cat([node_ids[:, None], subidx], axis=-1)
@@ -225,23 +238,32 @@ class N3Tree(nn.Module):
         else:
             return _QueryVerticalFunction.apply(
                     self.data, self.child, indices,
-                    self.offset, self.invradius)
+                    self.offset if world else torch.tensor(
+                        [0.0, 0.0, 0.0], device=indices.device),
+                    self.invradius if world else 1.0)
 
     # Special leaf data accessors (Implemented in Python only)
     # Integrated with _N3TreeView
-    def values(self, sel=None):
+    def values(self, sel=None, diff=False):
         """
         Get a list of all leaf values in tree
-        :param sel leaf selector to choose voxels to sample.
-        If none (default), samples all leaves
-        :return (n_leaves, data_dim)
+
+        :param sel: leaf selector to choose voxels to sample.
+                    If none (default), samples all leaves
+        :param diff: if True, the result will be differentiable
+                     wrt tree data parameter
+
+        :return: (n_leaves, data_dim)
+
         """
         leaf_node = self._all_leaves()
         if sel is not None:
             leaf_node = leaf_node[sel]
         leaf_node_sel = (*leaf_node.T,)
-        data = self.data.data[leaf_node_sel]
-        return data
+        if diff:
+            return self.data[leaf_node_sel]
+        else:
+            return self.data.data[leaf_node_sel]
 
     def depths(self, sel=None):
         """
@@ -249,9 +271,12 @@ class N3Tree(nn.Module):
         in same order as values(), corners().
         Root is at depth -1. Any children of
         root will have depth 0, etc.
-        :param sel leaf selector to choose voxels to sample.
-        If none (default), samples all leaves
-        :return (n_leaves) int32
+
+        :param sel: leaf selector to choose voxels to sample.
+                    If none (default), samples all leaves
+
+        :return: (n_leaves) int32
+
         """
         leaf_node = self._all_leaves()
         if sel is not None:
@@ -266,24 +291,29 @@ class N3Tree(nn.Module):
         in same order as values(), corners(), depths()
         Root is at depth -1. Any children of
         root will have depth 0, etc.
-        :param sel leaf selector to choose voxels to sample.
-        If none (default), samples all leaves
-        :param world whether to return in world coords or [0,1]^3
-        :return (n_leaves) float
+
+        :param sel: leaf selector to choose voxels to sample.
+                    If none (default), samples all leaves
+        :param world: whether to return in world coords or :math:`[0,1]^3`
+
+        :return: (n_leaves) float
+
         """
         lens = 2.0 ** (-self.depths(sel).float() - 1.0)
         if world:
-            lens /= self.invradius 
+            lens /= self.invradius
         return lens
 
     def corners(self, sel=None, world=True):
         """
         Get a list of leaf lower xyz corners in tree,
         in same order as values(), depths().
-        :param sel leaf selector to choose voxels to sample.
-        If none (default), samples all leaves
-        :param world whether to return in world coords or [0,1]^3
-        :return (n_leaves, 3)
+
+        :param sel: leaf selector to choose voxels to sample.
+                    If none (default), samples all leaves
+        :param world: whether to return in world coords or :math:`[0,1]^3`
+
+        :return: (n_leaves, 3)
         """
         leaf_node = self._all_leaves()
         if sel is not None:
@@ -298,11 +328,14 @@ class N3Tree(nn.Module):
     def sample(self, n_samples, sel=None, world=True):
         """
         Sample n_samples points in each leaf voxel
-        :param n_samples samples per voxel
-        :param sel leaf selector to choose voxels to sample.
-        If none (default), samples all leaves
-        :param world whether to return in world coords or [0,1]^3
-        :return (n_leaves, n_samples, 3)
+
+        :param n_samples: int samples per voxel
+        :param sel: leaf selector to choose voxels to sample.
+                    If none (default), samples all leaves
+        :param world: whether to return in world coords or :math:`[0,1]^3`
+
+        :return: (n_leaves, n_samples, 3)
+
         """
         corn = self.corners(sel=sel, world=False)[:, None]
         sz = self.lengths(self=sel, world=False)
@@ -314,11 +347,14 @@ class N3Tree(nn.Module):
 
     def snap(self, indices, world=True):
         """
-        Snap indices to lowest corner of current leaf voxel
-        :param indices (B, 3) indices to snap
-        :return (B, 3)
+        Snap indices to lowest corner of corresponding leaf voxel
+
+        :param indices: (B, 3) indices to snap
+
+        :return: (B, 3)
+
         """
-        _, node_ids = self.get(indices, want_node_ids=True)
+        _, node_ids = self.forward(indices, want_node_ids=True)
         leaf_ids = self._reverse_leaf_search(node_ids)
         return self.corners(sel=leaf_ids, world=world)
 
@@ -326,6 +362,11 @@ class N3Tree(nn.Module):
         """
         Get partial tree with some of the data dimensions (channels)
         E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only
+
+        :param data_sel: data channel selector, default is all channels
+
+        :return: partial N3Tree (copy)
+
         """
         sel_indices = torch.arange(self.data_dim)[data_sel]
         if sel_indices.ndim == 0:
@@ -349,6 +390,10 @@ class N3Tree(nn.Module):
     def randn_(self, mean=0.0, std=1.0):
         """
         Set all values to random normal
+
+        :param mean: normal mean
+        :param std: normal std
+
         """
         leaf_node = self._all_leaves()  # NNC, 4
         leaf_node_sel = (*leaf_node.T,)
@@ -356,9 +401,6 @@ class N3Tree(nn.Module):
                 self.data.data[leaf_node_sel]) * std + mean
 
     def clamp_(self, min, max, dim=None):
-        """
-        Clamp all values to random normal
-        """
         leaf_node = self._all_leaves()  # NNC, 4
         if dim is None:
             leaf_node_sel = (*leaf_node.T,)
@@ -371,15 +413,22 @@ class N3Tree(nn.Module):
         """
         Refine each leaf node, optionally filtering by value at dimension 'dim' >= 'thresh'.
         Respects depth_limit.
-        :param repeats number of times to repeat
-        :param dim dimension to check (used if thresh != None). Can be negative (like -1)
-        :param thresh threshold for dimension.
-        :param sel leaf selector
-        :param max_refine maximum number of leaves to refine.
-        'max_refine' random leaves (without replacement)
-        meeting the threshold are refined in case more leaves
-        satisfy it. Leaves at lower depths are sampled exponentially
-        more often.
+
+        :param repeats: int number of times to repeat
+        :param dim: dimension to check (used if thresh != None). Can be negative (like -1)
+        :param thresh: threshold for dimension.
+        :param sel: leaf selector
+        :param max_refine: maximum number of leaves to refine.
+                        'max_refine' random leaves (without replacement)
+                        meeting the threshold are refined in case more leaves
+                        satisfy it. Leaves at lower depths are sampled exponentially
+                        more often.
+
+        :return: True iff N3Tree.data parameter was resized, requiring
+                 optimizer reinitialization if you're using an optimizer
+
+.. warning::
+    `nn.Parameters` can change due to refinement. If any refine() call returns True, please re-make any optimizers
         """
         with torch.no_grad():
             resized = False
@@ -436,10 +485,12 @@ class N3Tree(nn.Module):
 
     def _refine_at(self, intnode_idx, xyzi):
         """
-        Advanced: refine specific leaf node.
-        :param intnode_idx index of internal node for identifying leaf
-        :param xyzi tuple of size 3 with each element in {0, ... N-1}
-        in xyz orde rto identify leaf within internal node
+        Advanced: refine specific leaf node. Mostly for testing purposes.
+
+        :param intnode_idx: index of internal node for identifying leaf
+        :param xyzi: tuple of size 3 with each element in {0, ... N-1}
+                    in xyz orde rto identify leaf within internal node
+
         """
         assert min(xyzi) >= 0 and max(xyzi) < self.N
         if self.parent_depth[intnode_idx, 1] >= self.depth_limit:
@@ -472,6 +523,8 @@ class N3Tree(nn.Module):
     def shrink_to_fit(self):
         """
         Shrink data & buffers to tightly needed fit tree data.
+
+.. warning::
         Will change the nn.Parameter size (data), breaking optimizer!
         """
         new_cap = self.n_internal
@@ -485,37 +538,28 @@ class N3Tree(nn.Module):
     # Misc
     @property
     def n_leaves(self):
-        """
-        Get number of leaf nodes (WARNING: slow)
-        """
         return self._all_leaves().shape[0]
 
     @property
-    def n_nodes(self):
-        """
-        Get number of total leaf+internal nodes (WARNING: slow)
-        """
-        return self.n_internal + self.n_leaves
-
-    @property
     def n_internal(self):
-        """
-        Get number of total internal nodes
-        """
         return self._n_internal.item()
 
     @property
     def capacity(self):
-        """
-        Get capacity (n_internal is amount taken)
-        """
         return self.parent_depth.shape[0]
 
     # Persistence
-    def save(self, path, cpp=False):
+    def save(self, path):
+        """
+        Save to from npz file
+
+        :param path: npz path
+
+        """
         data = {
             "data_dim" : self.data_dim,
             "child" : self.child.cpu(),
+            "parent_depth" : self.parent_depth.cpu(),
             "n_internal" : self._n_internal.cpu().item(),
             "max_depth" : self.max_depth.cpu().item(),
             "invradius" : self.invradius.cpu().item(),
@@ -524,14 +568,17 @@ class N3Tree(nn.Module):
             "geom_resize_fact": self.geom_resize_fact,
             "data": self.data.data.cpu().numpy().astype(np.float16)
         }
-        if not cpp:
-            data.update({
-                "parent_depth" : self.parent_depth.cpu(),
-                })
         np.savez_compressed(path, **data)
 
     @classmethod
     def load(cls, path, map_location='cpu'):
+        """
+        Load from npz file
+
+        :param path: npz path
+        :param map_location: device to put data
+
+        """
         tree = cls(map_location=map_location)
         z = np.load(path)
         tree.data_dim = int(z["data_dim"])
@@ -555,9 +602,12 @@ class N3Tree(nn.Module):
                     self.n_internal, self.capacity, self.max_depth.item())
 
     def __getitem__(self, key):
+        """
+        Indexing
+        """
         if isinstance(key, tuple) and len(key) == 3:
             # Use x,y,z format
-            return self.get(torch.tensor(key, dtype=torch.float32,
+            return self.forward(torch.tensor(key, dtype=torch.float32,
                 device=self.data.device)[None])[0]
         else:
             return _N3TreeView(self, key)
@@ -590,11 +640,6 @@ class N3Tree(nn.Module):
 
     # Internal utils
     def _calc_corners(self, nodes):
-        """
-        Compute lower bbox corners for given nodes
-        :nodes (Q, 4)
-        :return (Q, 3)
-        """
         Q, _ = nodes.shape
         filled = self.n_internal
 
@@ -650,9 +695,6 @@ class N3Tree(nn.Module):
         return val_tensor
 
     def _all_leaves(self):
-        """
-        Get all leaves of tree
-        """
         if self._last_all_leaves is None:
             self._last_all_leaves = (self.child[
                 :self.n_internal] == 0).nonzero(as_tuple=False)
@@ -664,13 +706,13 @@ class N3Tree(nn.Module):
 
     def world2tree(self, indices):
         """
-        Scale world points to tree ([0,1]^3)
+        Scale world points to tree (:math:`[0,1]^3`)
         """
         return torch.addcmul(self.offset, indices, self.invradius)
 
     def tree2world(self, indices):
         """
-        Scale tree points ([0,1]^3) to world accoording to center/radius
+        Scale tree points (:math:`[0,1]^3`) to world accoording to center/radius
         """
         return (indices  - self.offset) / self.invradius
 
