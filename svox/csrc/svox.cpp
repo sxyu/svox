@@ -55,14 +55,28 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
                                   torch::Tensor origins, torch::Tensor dirs,
                                   torch::Tensor vdirs, torch::Tensor offset,
                                   torch::Tensor invradius, float step_size,
-                                  float stop_thresh,
-                                  float background_brightness, int sh_order);
+                                  float background_brightness, int sh_order,
+                                  bool fast);
 
-torch::Tensor _volume_render_image_cuda(
-    torch::Tensor data, torch::Tensor child, torch::Tensor offset,
-    torch::Tensor invradius, torch::Tensor c2w, float fx, float fy, int width,
-    int height, float step_size, float stop_thresh, float background_brightness,
-    int sh_order);
+torch::Tensor _volume_render_image_cuda(torch::Tensor data, torch::Tensor child,
+                                        torch::Tensor offset,
+                                        torch::Tensor invradius,
+                                        torch::Tensor c2w, float fx, float fy,
+                                        int width, int height, float step_size,
+                                        float background_brightness,
+                                        int sh_order, bool fast);
+
+torch::Tensor _volume_render_backward_cuda(
+    torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
+    torch::Tensor origins, torch::Tensor dirs, torch::Tensor vdirs,
+    torch::Tensor offset, torch::Tensor invradius, float step_size,
+    float background_brightness, int sh_order);
+
+torch::Tensor _volume_render_image_backward_cuda(
+    torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
+    torch::Tensor offset, torch::Tensor invradius, torch::Tensor c2w, float fx,
+    float fy, int width, int height, float step_size,
+    float background_brightness, int sh_order);
 
 /**
  * @param data (M, N, N, N, K)
@@ -138,8 +152,8 @@ torch::Tensor volume_render(torch::Tensor data, torch::Tensor child,
                             torch::Tensor origins, torch::Tensor dirs,
                             torch::Tensor vdirs, torch::Tensor offset,
                             torch::Tensor invradius, float step_size,
-                            float stop_thresh, float background_brightness,
-                            int sh_order) {
+                            float background_brightness, int sh_order,
+                            bool fast) {
     CHECK_INPUT(data);
     CHECK_INPUT(child);
     CHECK_INPUT(origins);
@@ -150,16 +164,16 @@ torch::Tensor volume_render(torch::Tensor data, torch::Tensor child,
     TORCH_CHECK(dirs.size(0) == vdirs.size(0));
     TORCH_CHECK(dirs.size(0) == origins.size(0));
     return _volume_render_cuda(data, child, origins, dirs, vdirs, offset,
-                               invradius, step_size, stop_thresh,
-                               background_brightness, sh_order);
+                               invradius, step_size, background_brightness,
+                               sh_order, fast);
 }
 
 torch::Tensor volume_render_image(torch::Tensor data, torch::Tensor child,
                                   torch::Tensor offset, torch::Tensor invradius,
                                   torch::Tensor c2w, float fx, float fy,
                                   int width, int height, float step_size,
-                                  float stop_thresh,
-                                  float background_brightness, int sh_order) {
+                                  float background_brightness, int sh_order,
+                                  bool fast) {
     CHECK_INPUT(data);
     CHECK_INPUT(child);
     CHECK_INPUT(c2w);
@@ -167,8 +181,49 @@ torch::Tensor volume_render_image(torch::Tensor data, torch::Tensor child,
     TORCH_CHECK(c2w.ndimension() == 2);
     TORCH_CHECK(c2w.size(1) == 4);
     return _volume_render_image_cuda(data, child, offset, invradius, c2w, fx,
-                                     fy, width, height, step_size, stop_thresh,
-                                     background_brightness, sh_order);
+                                     fy, width, height, step_size,
+                                     background_brightness, sh_order, fast);
+}
+
+torch::Tensor volume_render_backward(torch::Tensor data, torch::Tensor child,
+                                     torch::Tensor grad_output,
+                                     torch::Tensor origins, torch::Tensor dirs,
+                                     torch::Tensor vdirs, torch::Tensor offset,
+                                     torch::Tensor invradius, float step_size,
+                                     float background_brightness,
+                                     int sh_order) {
+    CHECK_INPUT(data);
+    CHECK_INPUT(child);
+    CHECK_INPUT(grad_output);
+    CHECK_INPUT(origins);
+    CHECK_INPUT(dirs);
+    CHECK_INPUT(vdirs);
+    CHECK_INPUT(offset);
+    CHECK_INPUT(invradius);
+    TORCH_CHECK(dirs.size(0) == vdirs.size(0));
+    TORCH_CHECK(dirs.size(0) == origins.size(0));
+    TORCH_CHECK(grad_output.ndimension() == 2);
+    return _volume_render_backward_cuda(data, child, grad_output, origins, dirs,
+                                        vdirs, offset, invradius, step_size,
+                                        background_brightness, sh_order);
+}
+
+torch::Tensor volume_render_image_backward(
+    torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
+    torch::Tensor offset, torch::Tensor invradius, torch::Tensor c2w, float fx,
+    float fy, int width, int height, float step_size,
+    float background_brightness, int sh_order) {
+    CHECK_INPUT(data);
+    CHECK_INPUT(child);
+    CHECK_INPUT(grad_output);
+    CHECK_INPUT(c2w);
+    CHECK_INPUT(invradius);
+    TORCH_CHECK(c2w.ndimension() == 2);
+    TORCH_CHECK(c2w.size(1) == 4);
+    TORCH_CHECK(grad_output.ndimension() == 3);
+    return _volume_render_image_backward_cuda(
+        data, child, grad_output, offset, invradius, c2w, fx, fy, width, height,
+        step_size, background_brightness, sh_order);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
@@ -183,14 +238,27 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           "Assign tree at given coords [0, 1)", py::arg("data"),
           py::arg("child"), py::arg("indices"), py::arg("values"),
           py::arg("offset"), py::arg("invradius"));
+
     m.def("volume_render", &volume_render, py::arg("data"), py::arg("child"),
           py::arg("origins"), py::arg("dirs"), py::arg("vdirs"),
           py::arg("offset"), py::arg("invradius"), py::arg("step_size"),
-          py::arg("stop_thresh"), py::arg("background_brightness"),
-          py::arg("sh_order") = -1);
+          py::arg("background_brightness"), py::arg("sh_order") = -1,
+          py::arg("fast"));
     m.def("volume_render_image", &volume_render_image, py::arg("data"),
           py::arg("child"), py::arg("offset"), py::arg("invradius"),
           py::arg("c2w"), py::arg("fx"), py::arg("fy"), py::arg("width"),
-          py::arg("height"), py::arg("step_size"), py::arg("stop_thresh"),
+          py::arg("height"), py::arg("step_size"),
+          py::arg("background_brightness"), py::arg("sh_order") = -1,
+          py::arg("fast"));
+    m.def("volume_render_backward", &volume_render_backward, py::arg("data"),
+          py::arg("child"), py::arg("grad_output"), py::arg("origins"),
+          py::arg("dirs"), py::arg("vdirs"), py::arg("offset"),
+          py::arg("invradius"), py::arg("step_size"),
           py::arg("background_brightness"), py::arg("sh_order") = -1);
+    m.def("volume_render_image_backward", &volume_render_image_backward,
+          py::arg("data"), py::arg("child"), py::arg("grad_output"),
+          py::arg("offset"), py::arg("invradius"), py::arg("c2w"),
+          py::arg("fx"), py::arg("fy"), py::arg("width"), py::arg("height"),
+          py::arg("step_size"), py::arg("background_brightness"),
+          py::arg("sh_order") = -1);
 }

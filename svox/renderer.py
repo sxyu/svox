@@ -1,29 +1,120 @@
 import torch
 import numpy as np
-from torch import nn
+from torch import nn, autograd
 from dataclasses import dataclass
 
 from svox.helpers import get_c_extension
 
 _C = get_c_extension()
 
-@dataclass
-class Ray:
-    origins: torch.Tensor
-    dirs: torch.Tensor
-    viewdirs: torch.Tensor
+class _VolumeRenderFunction(autograd.Function):
+    @staticmethod
+    def forward(ctx, data, child,
+            origins, dirs, viewdirs, offset, invradius, opts):
+        out = _C.volume_render(
+            data,
+            child,
+            origins,
+            dirs,
+            viewdirs,
+            offset,
+            invradius,
+            opts["step_size"],
+            opts["background_brightness"],
+            opts["sh_order"],
+            opts["fast"]
+        )
+        ctx.save_for_backward(data, child, origins, dirs,
+                viewdirs, offset, invradius)
+        ctx.opts = opts
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        data, child, origins, dirs, viewdirs, offset, invradius = \
+                ctx.saved_tensors
+        opts = ctx.opts
+
+        grad_out = grad_out.contiguous()
+        if ctx.needs_input_grad[0]:
+            grad_data = _C.volume_render_backward(
+                data,
+                child,
+                grad_out,
+                origins,
+                dirs,
+                viewdirs,
+                offset,
+                invradius,
+                opts["step_size"],
+                opts["background_brightness"],
+                opts["sh_order"],
+            )
+        else:
+            grad_data = None
+
+        return grad_data, *((None,) * 7)
+
+class _VolumeRenderImageFunction(autograd.Function):
+    @staticmethod
+    def forward(ctx, data, child, offset, invradius, c2w, opts):
+        out = _C.volume_render_image(
+            data,
+            child,
+            offset,
+            invradius,
+            c2w,
+            opts["fx"],
+            opts["fy"],
+            opts["width"],
+            opts["height"],
+            opts["step_size"],
+            opts["background_brightness"],
+            opts["sh_order"],
+            opts["fast"]
+        )
+        ctx.save_for_backward(data, child, offset, invradius, c2w)
+        ctx.opts = opts
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        data, child, offset, invradius, c2w = ctx.saved_tensors
+        opts = ctx.opts
+
+        grad_out = grad_out.contiguous()
+        if ctx.needs_input_grad[0]:
+            grad_data = _C.volume_render_image_backward(
+                data,
+                child,
+                grad_out,
+                offset,
+                invradius,
+                c2w,
+                opts["fx"],
+                opts["fy"],
+                opts["width"],
+                opts["height"],
+                opts["step_size"],
+                opts["background_brightness"],
+                opts["sh_order"]
+            )
+        else:
+            grad_data = None
+
+        return grad_data, *((None,) * 5)
+
 
 class VolumeRenderer(nn.Module):
     """
     Volume renderer
     """
     def __init__(self, tree, step_size=1e-3,
-            stop_thresh=0.0, background_brightness=1.0,
+            background_brightness=1.0,
             sh_order=None):
         super().__init__()
         self.tree = tree
         self.step_size = step_size
-        self.stop_thresh = stop_thresh
         self.background_brightness = background_brightness
         if sh_order is None:
             # Auto SH order
@@ -41,8 +132,9 @@ class VolumeRenderer(nn.Module):
         else:
             self.sh_order = sh_order
 
-    def forward(self, rays):
+    def forward(self, rays, fast=False):
         """
+        Render a batch of rays
         Args:
             rays: dict[string, torch.Tensor] of origins [B, 3], dirs [B, 3], viewdirs [B, 3]
         Returns:
@@ -50,7 +142,13 @@ class VolumeRenderer(nn.Module):
                                    or (tree.data_dim - 1) // (sh_order + 1) ** 2 else
         """
         assert _C is not None  # Pure PyTorch version not implemented
-        return _C.volume_render(
+        opts = {
+            'step_size': self.step_size,
+            'background_brightness':self.background_brightness,
+            'sh_order': self.sh_order,
+            'fast': fast
+        }
+        return _VolumeRenderFunction.apply(
             self.tree.data,
             self.tree.child,
             rays["origins"],
@@ -58,14 +156,12 @@ class VolumeRenderer(nn.Module):
             rays["viewdirs"],
             self.tree.offset,
             self.tree.invradius,
-            self.step_size,
-            self.stop_thresh,
-            self.background_brightness,
-            self.sh_order
+            opts
         )
 
-    def render_persp(self, c2w, width=800, height=800, fx=1111.111, fy=None):
+    def render_persp(self, c2w, width=800, height=800, fx=1111.111, fy=None, fast=False):
         """
+        Render a perspective image
         Args:
             c2w: torch.Tensor [3, 4] or [4, 4] camera pose matrix (c2w)
             width: output image width
@@ -81,18 +177,21 @@ class VolumeRenderer(nn.Module):
             fy = fx
 
         assert _C is not None  # Pure PyTorch version not implemented
-        return _C.volume_render_image(
+        opts = {
+            'fx': fx,
+            'fy': fy,
+            'width': width,
+            'height': height,
+            'step_size': self.step_size,
+            'background_brightness':self.background_brightness,
+            'sh_order': self.sh_order,
+            'fast': fast
+        }
+        return _VolumeRenderImageFunction.apply(
             self.tree.data,
             self.tree.child,
             self.tree.offset,
             self.tree.invradius,
             c2w,
-            fx,
-            fy,
-            width,
-            height,
-            self.step_size,
-            self.stop_thresh,
-            self.background_brightness,
-            self.sh_order
+            opts
         )

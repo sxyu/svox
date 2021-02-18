@@ -29,13 +29,13 @@ POSSIBILITY OF SUCH DAMAGE.
 import os.path as osp
 import torch
 import numpy as np
-from torch import nn
+from torch import nn, autograd
 from svox.helpers import _N3TreeView, get_c_extension
 from warnings import warn
 
 _C = get_c_extension()
 
-class _SVEQueryVerticalFunction(torch.autograd.Function):
+class _QueryVerticalFunction(autograd.Function):
     @staticmethod
     def forward(ctx, data, child, indices, offset, invradius):
         out = _C.query_vertical(data, child, indices, offset, invradius)
@@ -54,7 +54,7 @@ class _SVEQueryVerticalFunction(torch.autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, None, None, None, None
+        return grad_data, *((None,) * 4)
 
 
 class N3Tree(nn.Module):
@@ -64,7 +64,7 @@ class N3Tree(nn.Module):
     N = branching factor at each interior node.
     """
     def __init__(self, N=2, data_dim=4, depth_limit=10,
-            init_reserve=4, init_refine=0, geom_resize_fact=1.5,
+            init_reserve=1, init_refine=0, geom_resize_fact=1.5,
             radius=0.5, center=[0.5, 0.5, 0.5], map_location="cpu"):
         """
         :param N branching factor N
@@ -223,7 +223,7 @@ class N3Tree(nn.Module):
 
             return result
         else:
-            return _SVEQueryVerticalFunction.apply(
+            return _QueryVerticalFunction.apply(
                     self.data, self.child, indices,
                     self.offset, self.invradius)
 
@@ -322,6 +322,29 @@ class N3Tree(nn.Module):
         leaf_ids = self._reverse_leaf_search(node_ids)
         return self.corners(sel=leaf_ids, world=world)
 
+    def partial(self, data_sel=None):
+        """
+        Get partial tree with some of the data dimensions (channels)
+        E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only
+        """
+        sel_indices = torch.arange(self.data_dim)[data_sel]
+        if sel_indices.ndim == 0:
+            sel_indices = sel_indices.unsqueeze(0)
+        t2 = N3Tree(N=self.N, data_dim=sel_indices.numel(),
+                depth_limit=self.depth_limit,
+                geom_resize_fact=self.geom_resize_fact,
+                map_location=self.data.data.device)
+        t2.invradius = self.invradius.clone()
+        t2.offset = self.offset.clone()
+        t2.child = self.child.clone()
+        t2.parent_depth = self.parent_depth.clone()
+        t2._n_internal = self._n_internal.clone()
+        t2.max_depth = self.max_depth.clone()
+        t2.data.data = self.data.data[..., sel_indices].contiguous()
+        return t2
+
+
+
     # In-place modification helpers
     def randn_(self, mean=0.0, std=1.0):
         """
@@ -344,14 +367,14 @@ class N3Tree(nn.Module):
         self.data.data[leaf_node_sel] = self.data.data[leaf_node_sel].clamp(min, max)
 
     # Leaf refinement & memory management methods
-    def refine(self, repeats=1, dim=-1, thresh=None, mask=None, max_refine=None):
+    def refine(self, repeats=1, dim=-1, thresh=None, sel=None, max_refine=None):
         """
         Refine each leaf node, optionally filtering by value at dimension 'dim' >= 'thresh'.
         Respects depth_limit.
         :param repeats number of times to repeat
         :param dim dimension to check (used if thresh != None). Can be negative (like -1)
         :param thresh threshold for dimension.
-        :param mask leaf mask
+        :param sel leaf selector
         :param max_refine maximum number of leaves to refine.
         'max_refine' random leaves (without replacement)
         meeting the threshold are refined in case more leaves
@@ -369,8 +392,8 @@ class N3Tree(nn.Module):
                 good_mask &= (self.parent_depth[:filled, -1] < self.depth_limit)[:, None, None, None]
 
                 leaf_node = good_mask.nonzero(as_tuple=False)  # NNC, 4
-                if mask is not None:
-                    leaf_node = leaf_node[mask]
+                if sel is not None:
+                    leaf_node = leaf_node[sel]
                 if leaf_node.shape[0] == 0:
                     # Nothing to do
                     return False

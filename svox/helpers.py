@@ -34,7 +34,7 @@ class _N3TreeView:
         self.tree.data.data[leaf_node_sel] = value
 
     def refine(self):
-        return self.tree.refine(mask=self.mask)
+        return self.tree.refine(sel=self._leaf_key())
 
     @property
     def value(self):
