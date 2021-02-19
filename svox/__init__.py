@@ -29,4 +29,4 @@ POSSIBILITY OF SUCH DAMAGE.
 """
 from .svox import N3Tree
 from .renderer import VolumeRenderer
-from .helpers import LocalIndex
+from .helpers import N3TreeView, LocalIndex
