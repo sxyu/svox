@@ -33,24 +33,28 @@ class N3TreeView:
         if isinstance(key, LocalIndex):
             key = key.val
             local = True
-        if isinstance(key, tuple) and len(key) == 3:
-            key = torch.tensor(key, dtype=torch.float32,
-                    device=tree.data.device).reshape(1, 3)
-        if torch.is_tensor(key) and key.ndim == 2 and key.shape[1] == 3:
-            if key.dtype != torch.float32:
-                key = key.float()
-            val, target = tree.forward(key, want_node_ids=True, world=not local)
-            self.key = (*tree._unpack_index(target).T,)
-        else:
-            leaf_node = self.tree._all_leaves()
-            leaf_key = key[0] if isinstance(key, tuple) else key
-            if isinstance(leaf_key, int):
-                leaf_key = torch.tensor([leaf_key], device=leaf_node.device)
-            leaf_node = leaf_node.__getitem__(leaf_key)
-            if isinstance(key, tuple):
-                self.key = (*leaf_node.T, *key[1:])
+        if isinstance(key, tuple) and len(key) >= 3:
+            main_key = torch.tensor(key[:3], dtype=torch.float32,
+                        device=tree.data.device).reshape(1, 3)
+            if len(key) > 3:
+                key = (main_key, *key[3:])
             else:
-                self.key = (*leaf_node.T,)
+                key = main_key
+        leaf_key = key[0] if isinstance(key, tuple) else key
+        if torch.is_tensor(leaf_key) and leaf_key.ndim == 2 and leaf_key.shape[1] == 3:
+            if leaf_key.dtype != torch.float32:
+                leaf_key = leaf_key.float()
+            val, target = tree.forward(leaf_key, want_node_ids=True, world=not local)
+            leaf_node = (*tree._unpack_index(target).T,)
+        else:
+            if isinstance(leaf_key, int):
+                leaf_key = torch.tensor([leaf_key], device=tree.data.device)
+            leaf_node = self.tree._all_leaves()
+            leaf_node = leaf_node.__getitem__(leaf_key).T
+        if isinstance(key, tuple):
+            self.key = (*leaf_node, *key[1:])
+        else:
+            self.key = (*leaf_node,)
         self._value = None;
 
     def __repr__(self):
@@ -68,18 +72,22 @@ class N3TreeView:
         return func(*new_args, **kwargs)
 
     def set(self, value):
+        if isinstance(value, N3TreeView):
+            value = value.values_nograd
         self.tree.data.data[self.key] = value
 
     def refine(self):
         """
-        Refine selected leaves
+        Refine selected leaves using tree.refine
         """
         return self.tree.refine(sel=self.key[:4])
 
     @property
     def values(self):
         """
-        Values of the selected leaves
+        Values of the selected leaves (autograd enabled)
+
+        :return: (n_leaves, data_dim) float32 note this is 2D even if key is int 
         """
         return self.tree.data[self.key]
 
@@ -87,6 +95,8 @@ class N3TreeView:
     def values_nograd(self):
         """
         Values of the selected leaves (no autograd)
+
+        :return: (n_leaves, data_dim) float32 note this is 2D even if key is int 
         """
         return self.tree.data.data[self.key]
 
@@ -207,10 +217,24 @@ class N3TreeView:
     def clamp_(self, min=None, max=None):
         """
         Clamp.
+
         :param min: clamp min value, None=disable
         :param max: clamp max value, None=disable
+
         """
         self.tree.data.data[self.key] = self.tree.data.data[self.key].clamp(min, max)
+
+    def relu_(self):
+        """
+        Relu.
+        """
+        self.tree.data.data[self.key] = torch.relu(self.tree.data.data[self.key])
+
+    def sigmoid_(self):
+        """
+        Sigmoid.
+        """
+        self.tree.data.data[self.key] = torch.sigmoid(self.tree.data.data[self.key])
 
     def _indexer(self):
         return torch.stack(self.key[:4], dim=-1)

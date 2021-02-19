@@ -84,7 +84,7 @@ class _VolumeRenderFunction(autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, *((None,) * 7)
+        return grad_data, None, None, None, None, None, None, None
 
 class _VolumeRenderImageFunction(autograd.Function):
     @staticmethod
@@ -133,7 +133,7 @@ class _VolumeRenderImageFunction(autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, *((None,) * 5)
+        return grad_data, None, None, None, None, None
 
 
 class VolumeRenderer(nn.Module):

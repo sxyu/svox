@@ -55,7 +55,7 @@ class _QueryVerticalFunction(autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, *((None,) * 4)
+        return grad_data, None, None, None, None
 
 
 class N3Tree(nn.Module):
@@ -559,10 +559,6 @@ class N3Tree(nn.Module):
                 :self.n_internal] == 0).nonzero(as_tuple=False)
         return self._last_all_leaves
 
-    def _reverse_leaf_search(self, target):
-        packed_sorted = self._pack_index(self._all_leaves())
-        return torch.searchsorted(packed_sorted, target)
-
     def world2tree(self, indices):
         """
         Scale world points to tree (:math:`[0,1]^3`)
@@ -581,7 +577,7 @@ def _redirect_to_n3view():
     redir_props = ['depths', 'lengths', 'lengths_local', 'corners', 'corners_local',
                    'values', 'values_local', 'ndim', 'shape']
     redir_funcs = ['sample', 'sample_local', 'dim', 'numel', 'size', '__len__',
-            'normal_', 'clamp_', 'uniform_']
+            'normal_', 'clamp_', 'uniform_', 'relu_', 'sigmoid_']
     def redirect_func(redir_func):
         def redir_impl(self, *args, **kwargs):
             return getattr(self[:], redir_func)(*args, **kwargs)
