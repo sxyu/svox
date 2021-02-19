@@ -5,7 +5,8 @@ from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 ROOT_DIR = osp.dirname(osp.abspath(__file__))
 
-__version__ = '0.2.5'
+__version__ = None
+exec(open('svox/version.py', 'r').read())
 
 CUDA_FLAGS = []
 INSTALL_REQUIREMENTS = []

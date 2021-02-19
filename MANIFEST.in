@@ -7,6 +7,7 @@ include svox/helpers.py
 include svox/sh.py
 include svox/renderer.py
 include svox/__init__.py
+include svox/version.py
 include svox/csrc/include/common.cuh
 include svox/csrc/svox.cpp
 include svox/csrc/svox_kernel.cu

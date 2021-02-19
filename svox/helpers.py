@@ -34,6 +34,7 @@ class N3TreeView:
             key = key.val
             local = True
         if isinstance(key, tuple) and len(key) >= 3:
+            # Handle tree[x, y, z[, c]]
             main_key = torch.tensor(key[:3], dtype=torch.float32,
                         device=tree.data.device).reshape(1, 3)
             if len(key) > 3:
@@ -42,11 +43,14 @@ class N3TreeView:
                 key = main_key
         leaf_key = key[0] if isinstance(key, tuple) else key
         if torch.is_tensor(leaf_key) and leaf_key.ndim == 2 and leaf_key.shape[1] == 3:
+            # Handle tree[P[, c]] where P is a (B, 3) matrix of 3D points
             if leaf_key.dtype != torch.float32:
                 leaf_key = leaf_key.float()
             val, target = tree.forward(leaf_key, want_node_ids=True, world=not local)
+            self._packed_ids = target
             leaf_node = (*tree._unpack_index(target).T,)
         else:
+            self._packed_ids = None
             if isinstance(leaf_key, int):
                 leaf_key = torch.tensor([leaf_key], device=tree.data.device)
             leaf_node = self.tree._all_leaves()
@@ -55,12 +59,15 @@ class N3TreeView:
             self.key = (*leaf_node, *key[1:])
         else:
             self.key = (*leaf_node,)
-        self._value = None;
+        self._value = None
+        self._tree_ver = tree._ver
 
     def __repr__(self):
+        self._check_ver()
         return "N3TreeView(" + repr(self.values) + ")"
 
     def __torch_function__(self, func, types, args=(), kwargs=None):
+        self._check_ver()
         if kwargs is None:
             kwargs = {}
         new_args = []
@@ -72,23 +79,27 @@ class N3TreeView:
         return func(*new_args, **kwargs)
 
     def set(self, value):
+        self._check_ver()
         if isinstance(value, N3TreeView):
             value = value.values_nograd
         self.tree.data.data[self.key] = value
 
-    def refine(self):
+    def refine(self, repeats=1):
         """
         Refine selected leaves using tree.refine
         """
-        return self.tree.refine(sel=self.key[:4])
+        self._check_ver()
+        ret = self.tree.refine(repeats, sel=self._unique_node_key())
+        return ret
 
     @property
     def values(self):
         """
         Values of the selected leaves (autograd enabled)
 
-        :return: (n_leaves, data_dim) float32 note this is 2D even if key is int 
+        :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
+        self._check_ver()
         return self.tree.data[self.key]
 
     @property
@@ -96,12 +107,14 @@ class N3TreeView:
         """
         Values of the selected leaves (no autograd)
 
-        :return: (n_leaves, data_dim) float32 note this is 2D even if key is int 
+        :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
+        self._check_ver()
         return self.tree.data.data[self.key]
 
     @property
     def shape(self):
+        self._check_ver()
         return self.values_nograd.shape
 
     @property
@@ -118,8 +131,9 @@ class N3TreeView:
 
         :return: (n_leaves) int32
         """
+        self._check_ver()
         return self.tree.parent_depth[self.key[0], 1]
-    
+
     @property
     def lengths(self):
         """
@@ -128,6 +142,7 @@ class N3TreeView:
 
         :return: (n_leaves) float
         """
+        self._check_ver()
         return 2.0 ** (-self.depths.float() - 1.0) / self.tree.invradius
 
     @property
@@ -139,6 +154,7 @@ class N3TreeView:
 
         :return: (n_leaves) float
         """
+        self._check_ver()
         return 2.0 ** (-self.depths.float() - 1.0)
 
     @property
@@ -150,6 +166,7 @@ class N3TreeView:
 
         :return: (n_leaves, 3) float
         """
+        self._check_ver()
         return self.tree._calc_corners(self._indexer())
 
     @property
@@ -161,6 +178,7 @@ class N3TreeView:
 
         :return: (n_leaves, 3) float
         """
+        self._check_ver()
         return (self.tree._calc_corners(self._indexer())
                 - self.tree.offset) / self.tree.invradius
 
@@ -170,6 +188,7 @@ class N3TreeView:
 
         :return: (n_leaves, n_samples, 3) float
         """
+        self._check_ver()
         corn = self.corners
         length = self.lengths
         u = torch.rand((corn.shape[0], n_samples, 3),
@@ -184,6 +203,7 @@ class N3TreeView:
 
         :return: (n_leaves, n_samples, 3) float
         """
+        self._check_ver()
         corn = self.corners_local
         length = self.lengths_local
         u = torch.rand((corn.shape[0], n_samples, 3),
@@ -200,6 +220,7 @@ class N3TreeView:
         :param std: normal std
 
         """
+        self._check_ver()
         self.tree.data.data[self.key] = torch.randn_like(
                 self.tree.data.data[self.key]) * std + mean
 
@@ -211,6 +232,7 @@ class N3TreeView:
         :param max: interval max
 
         """
+        self._check_ver()
         self.tree.data.data[self.key] = torch.rand_like(
                 self.tree.data.data[self.key]) * (max - min) + min
 
@@ -222,22 +244,38 @@ class N3TreeView:
         :param max: clamp max value, None=disable
 
         """
+        self._check_ver()
         self.tree.data.data[self.key] = self.tree.data.data[self.key].clamp(min, max)
 
     def relu_(self):
         """
         Relu.
         """
+        self._check_ver()
         self.tree.data.data[self.key] = torch.relu(self.tree.data.data[self.key])
 
     def sigmoid_(self):
         """
         Sigmoid.
         """
+        self._check_ver()
         self.tree.data.data[self.key] = torch.sigmoid(self.tree.data.data[self.key])
 
     def _indexer(self):
         return torch.stack(self.key[:4], dim=-1)
+
+    def _unique_node_key(self):
+        if self._packed_ids is None:
+            return self.key[:4]
+
+        uniq_ids = torch.unique(self._packed_ids)
+        return (*self.tree._unpack_index(uniq_ids).T,)
+
+    def _check_ver(self):
+        if self.tree._ver > self._tree_ver:
+            self.key = self._packed_ids = None
+            raise RuntimeError("N3TreeView has been invalidated because tree " +
+                    "data layout has changed")
 
 # Redirect functions to Tensor
 def _redirect_funcs():
