@@ -65,7 +65,9 @@ class N3Tree(nn.Module):
     where :math:`N=2` is the familiar octree.
 
 .. warning::
-    `nn.Parameters` can change due to refinement. If any refine() call returns True,
+    `nn.Parameters` can change size, which 
+    makes current optimizers invalid. If any refine() or
+    shrink_to_fit() call returns True,
     please re-make any optimizers
     """
     def __init__(self, N=2, data_dim=4, depth_limit=10,
@@ -208,7 +210,6 @@ class N3Tree(nn.Module):
             node_ids = torch.zeros(n_queries, dtype=torch.long, device=indices.device)
             result = torch.empty((n_queries, self.data_dim), dtype=torch.float32,
                                   device=indices.device)
-            #  remain_mask = torch.ones(n_queries, dtype=torch.bool, device=indices.device)
             remain_indices = torch.arange(n_queries, dtype=torch.long, device=indices.device)
             ind = indices.clone()
 
@@ -307,7 +308,7 @@ class N3Tree(nn.Module):
         """
         nid = self._frontier[frontier_sel]
         if nid.numel() == 0:
-            return
+            return False
         if nid.ndim == 0:
             nid = nid.reshape(1)
         data = self.data.data[nid]
@@ -321,6 +322,7 @@ class N3Tree(nn.Module):
         self.parent_depth[nid] = -1
         self._n_free += nid.shape[0]
         self._invalidate()
+        return True
 
     def reduce_frontier(self, op=torch.mean, dim=None, grad=False):
         """
@@ -499,17 +501,40 @@ class N3Tree(nn.Module):
 
     def shrink_to_fit(self):
         """
-        Shrink data & buffers to tightly needed fit tree data.
+        Shrink data & buffers to tightly needed fit tree data,
+        possibly dealing with fragmentation caused by merging.
 
 .. warning::
         Will change the nn.Parameter size (data), breaking optimizer!
         """
-        new_cap = self.n_internal
+        n_int = self.n_internal
+        n_free = self._n_free.item()
+        new_cap = n_int - n_free
         if new_cap >= self.capacity:
             return False
-        self.data = nn.Parameter(self.data.data[:new_cap])
-        self.child = self.child[:new_cap].clone()
-        self.parent_depth = self.parent_depth[:new_cap].clone()
+        if n_free > 0:
+            # Defragment
+            free = self.parent_depth[:n_int, 0] == -1
+            csum = torch.cumsum(free, dim=0)
+
+            remain_ids = torch.arange(n_int, dtype=torch.long)[~free]
+            remain_parents = (*self._unpack_index(
+                self.parent_depth[remain_ids, 0]).long().T,)
+
+            # Shift data over
+            par_shift = csum[remain_parents[0]]
+            self.child[remain_parents] -= csum[remain_ids] - par_shift
+            self.parent_depth[remain_ids, 0] -= par_shift
+
+            # Remake the data now
+            self.data = nn.Parameter(self.data.data[remain_ids])
+            self.child = self.child[remain_ids]
+            self.parent_depth = self.parent_depth[remain_ids]
+        else:
+            # Direct resize
+            self.data = nn.Parameter(self.data.data[:new_cap])
+            self.child = self.child[:new_cap]
+            self.parent_depth = self.parent_depth[:new_cap]
         self._invalidate()
         return True
 
@@ -531,13 +556,16 @@ class N3Tree(nn.Module):
         return torch.max(self.depths).item()
 
     # Persistence
-    def save(self, path):
+    def save(self, path, shrink=True):
         """
         Save to from npz file
 
         :param path: npz path
+        :pram shrink: if True (default), applies shrink_to_fit before saving
 
         """
+        if shrink:
+            self.shrink_to_fit()
         data = {
             "data_dim" : self.data_dim,
             "child" : self.child.cpu(),

@@ -47,7 +47,7 @@ class N3TreeView:
             if leaf_key.dtype != torch.float32:
                 leaf_key = leaf_key.float()
             val, target = tree.forward(leaf_key, want_node_ids=True, world=not local)
-            self._packed_ids = target
+            self._packed_ids = target.clone()
             leaf_node = (*tree._unpack_index(target).T,)
         else:
             self._packed_ids = None
@@ -286,7 +286,8 @@ def _redirect_funcs():
     redir_grad_funcs = ['__add__', '__mul__', '__sub__'
                    '__mod__', '__div__', '__radd__', '__rsub__', '__rmul__',
                    '__rdiv__', '__abs__', '__pos__', '__neg__',
-                   '__len__', 'clamp', 'clamp_max', 'clamp_min', 'relu', 'sigmoid']
+                   '__len__', 'clamp', 'clamp_max', 'clamp_min', 'relu', 'sigmoid',
+                   'max', 'min', 'mean', 'sum']
     def redirect_func(redir_func, grad=False):
         def redir_impl(self, *args, **kwargs):
             return getattr(self.values if grad else self.values_nograd, redir_func)(
