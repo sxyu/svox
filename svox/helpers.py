@@ -167,7 +167,8 @@ class N3TreeView:
         :return: (n_leaves, 3) float
         """
         self._check_ver()
-        return self.tree._calc_corners(self._indexer())
+        return (self.tree._calc_corners(self._indexer())
+                - self.tree.offset) / self.tree.invradius
 
     @property
     def corners_local(self):
@@ -179,8 +180,7 @@ class N3TreeView:
         :return: (n_leaves, 3) float
         """
         self._check_ver()
-        return (self.tree._calc_corners(self._indexer())
-                - self.tree.offset) / self.tree.invradius
+        return self.tree._calc_corners(self._indexer())
 
     def sample(self, n_samples):
         """
