@@ -65,7 +65,7 @@ class N3Tree(nn.Module):
     where :math:`N=2` is the familiar octree.
 
 .. warning::
-    `nn.Parameters` can change size, which 
+    `nn.Parameters` can change size, which
     makes current optimizers invalid. If any refine() or
     shrink_to_fit() call returns True,
     please re-make any optimizers
@@ -109,7 +109,7 @@ class N3Tree(nn.Module):
 
         radius = torch.tensor(radius, device=map_location)
         center = torch.tensor(center, device=map_location)
-        
+
         from packaging import version
         if version.parse(torch.__version__) >= version.parse('1.6.0'):
             self.register_buffer("invradius", 0.5 / radius, persistent=False)
@@ -284,6 +284,7 @@ class N3Tree(nn.Module):
         t2.child = self.child.clone()
         t2.parent_depth = self.parent_depth.clone()
         t2._n_internal = self._n_internal.clone()
+        t2._n_free = self._n_free.clone()
         t2.data.data = self.data.data[..., sel_indices].contiguous()
         return t2
 
@@ -300,12 +301,14 @@ class N3Tree(nn.Module):
                              conditions for merge, then pass
                              mask or indices to merge().
         :param op: reduction to combine child leaves into node.
-                   E.g. torch.max, torch.mean. 
+                   E.g. torch.max, torch.mean.
                    Should take a positional argument :code:`x` (B, N, data_dim) and
                    a named parameter :code:`dim` (always 1),
                    and return a matrix of (B, your_out_dim).
                    If a tuple is returned, uses first result.
         """
+        if self.n_internal - self._n_free.item() <= 1:
+            raise RuntimeError("Cannot merge root node")
         nid = self._frontier[frontier_sel]
         if nid.numel() == 0:
             return False
@@ -330,7 +333,7 @@ class N3Tree(nn.Module):
         (i.e., nodes for which all children are leaves).
 
         :param op: reduction to combine child leaves into node.
-                   E.g. torch.max, torch.mean. 
+                   E.g. torch.max, torch.mean.
                    Should take a positional argument :code:`x`
                    (B, N, in_dim <= data_dim) and
                    a named parameter :code:`dim` (always 1),
@@ -361,12 +364,6 @@ class N3Tree(nn.Module):
         operation, taking the returned values and discarding the
         argmax part.
 
-        :param op: reduction to combine child leaves into node.
-                   E.g. torch.max, torch.mean. 
-                   Should take a positional argument :code:`x`
-                   (B, N, in_dim <= data_dim) and
-                   a named parameter :code:`dim` (always 1),
-                   and return a matrix of (B, your_out_dim).
         :param dim: dimension(s) of data to return, e.g. -1 returns
                     last data dimension for all 'frontier' nodes
         :param grad: if True, returns a tensor differentiable wrt tree data.
@@ -376,6 +373,39 @@ class N3Tree(nn.Module):
         """
         return self.reduce_frontier(op=lambda x, dim: torch.max(x, dim=dim)[0],
                 grad=grad, dim=dim)
+
+    def diam_frontier(self, dim=None, grad=False, scale=1.0):
+        """
+        Takes diameter over child leaf values for each 'frontier' node
+        (i.e., nodes for which all children are leaves).
+
+        :param dim: dimension(s) of data to return, e.g. -1 returns
+                    last data dimension for all 'frontier' nodes
+        :param grad: if True, returns a tensor differentiable wrt tree data.
+                      Default False.
+
+        :return: reduced tensor
+        """
+        def diam_func(x, dim):
+            # (B, N3, in_dim)
+            if x.ndim == 2:
+                x = x[:, :, None]
+            N3 = x.shape[1]
+            diam = torch.zeros(x.shape[:-2], device=x.device)
+            for offset in range(N3):
+                end_idx = -offset if offset > 0 else N3
+                delta = (x[:, offset:] - x[:, :end_idx]) * scale
+                n1 = torch.norm(delta, dim=-1).max(dim=-1)[0]
+                if offset:
+                    delta = (x[:, :offset] - x[:, end_idx:]) * scale
+                    n2 = torch.norm(delta, dim=-1).max(dim=-1)[0]
+                    n1 = torch.max(n1, n2)
+                diam = torch.max(diam, n1)
+            return diam
+
+        return self.reduce_frontier(op=diam_func,
+                grad=grad, dim=dim)
+
 
     @property
     def _frontier(self):
@@ -393,12 +423,11 @@ class N3Tree(nn.Module):
 
 
     # Leaf refinement & memory management methods
-    def refine(self, repeats=1, dim=-1, thresh=None, max_refine=None, sel=None):
+    def refine(self, repeats=1, sel=None):
         """
-        Refine each leaf node, optionally filtering by value at dimension 'dim' >= 'thresh'.
-        Respects depth_limit.
+        Refine each selected leaf node, respecting depth_limit.
 
-        :param repeats: int number of times to repeat
+        :param repeats: int number of times to repeat refinement
         :param sel: (N, 4) node selector. Default selects all leaves.
 
         :return: True iff N3Tree.data parameter was resized, requiring
@@ -411,7 +440,7 @@ class N3Tree(nn.Module):
 .. warning::
     The selector :code:`sel` is assumed to contain unique leaf indices. If there are duplicates
     memory will be wasted. We do not dedup here for efficiency reasons.
-    
+
         """
         with torch.no_grad():
             resized = False
@@ -530,6 +559,8 @@ class N3Tree(nn.Module):
             self.data = nn.Parameter(self.data.data[remain_ids])
             self.child = self.child[remain_ids]
             self.parent_depth = self.parent_depth[remain_ids]
+            self._n_internal.fill_(new_cap)
+            self._n_free.zero_()
         else:
             # Direct resize
             self.data = nn.Parameter(self.data.data[:new_cap])
@@ -730,7 +761,7 @@ def _redirect_to_n3view():
     redir_props = ['depths', 'lengths', 'lengths_local', 'corners', 'corners_local',
                    'values', 'values_local', 'ndim', 'shape']
     redir_funcs = ['sample', 'sample_local', 'dim', 'numel', 'size', '__len__',
-            'normal_', 'clamp_', 'uniform_', 'relu_', 'sigmoid_']
+            'normal_', 'clamp_', 'uniform_', 'relu_', 'sigmoid_', 'nan_to_num_']
     def redirect_func(redir_func):
         def redir_impl(self, *args, **kwargs):
             return getattr(self[:], redir_func)(*args, **kwargs)

@@ -249,17 +249,28 @@ class N3TreeView:
 
     def relu_(self):
         """
-        Relu.
+        Apply relu to all elements.
         """
         self._check_ver()
         self.tree.data.data[self.key] = torch.relu(self.tree.data.data[self.key])
 
     def sigmoid_(self):
         """
-        Sigmoid.
+        Apply sigmoid to all elements.
         """
         self._check_ver()
         self.tree.data.data[self.key] = torch.sigmoid(self.tree.data.data[self.key])
+
+    def nan_to_num_(self, inf_val=2e4):
+        """
+        Convert nans to 0.0 and infs to inf_val
+        """
+        data = self.tree.data.data[self.key]
+        data[torch.isnan(data)] = 0.0
+        inf_mask = torch.isinf(data)
+        data[inf_mask & (data > 0)] = inf_val
+        data[inf_mask & (data < 0)] = -inf_val
+        self.tree.data.data[self.key] = data
 
     def _indexer(self):
         return torch.stack(self.key[:4], dim=-1)
