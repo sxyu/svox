@@ -294,8 +294,9 @@ def _redirect_funcs():
                    '__eq__', '__ne__', '__ge__', '__gt__', '__le__',
                    '__lt__', '__floor__', '__ceil__', '__round__', '__len__',
                    'item', 'size', 'dim', 'numel']
-    redir_grad_funcs = ['__add__', '__mul__', '__sub__'
-                   '__mod__', '__div__', '__radd__', '__rsub__', '__rmul__',
+    redir_grad_funcs = ['__add__', '__mul__', '__sub__',
+                   '__mod__', '__div__', '__truediv__',
+                   '__radd__', '__rsub__', '__rmul__',
                    '__rdiv__', '__abs__', '__pos__', '__neg__',
                    '__len__', 'clamp', 'clamp_max', 'clamp_min', 'relu', 'sigmoid',
                    'max', 'min', 'mean', 'sum']
