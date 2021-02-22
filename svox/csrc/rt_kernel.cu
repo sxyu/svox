@@ -27,10 +27,23 @@
 #include <cstdint>
 #include "common.cuh"
 
-// I find 256 is faster than 512/1024
-#define CUDA_N_THREADS 256
-
 namespace {
+int cuda_n_threads = -1;
+__host__ void auto_cuda_threads() {
+    if (~cuda_n_threads) return;
+    cudaDeviceProp dev_prop;
+    cudaGetDeviceProperties(&dev_prop, 0);
+	const int n_cores = get_sp_cores(dev_prop);
+    // Optimize number of CUDA threads per block
+    if (n_cores < 2048) {
+        cuda_n_threads = 256;
+    } if (n_cores < 8192) {
+        cuda_n_threads = 512;
+    } else {
+        cuda_n_threads = 1024;
+    }
+}
+
 namespace device {
 // SH Coefficients from https://github.com/google/spherical-harmonics
 __device__ __constant__ const float C0 = 0.28209479177387814;
@@ -619,11 +632,12 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
     const float sigma_thresh = fast ? 1e-2f : 0.f;
     const float stop_thresh = fast ? 1e-2f : 0.f;
 
-    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
+    auto_cuda_threads();
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
     torch::Tensor result = torch::zeros({Q, out_data_dim}, origins.options());
     AT_DISPATCH_FLOATING_TYPES(origins.type(), __FUNCTION__, [&] {
-            device::render_ray_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+            device::render_ray_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
                 data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
@@ -653,12 +667,13 @@ torch::Tensor _volume_render_image_cuda(
     const float sigma_thresh = fast ? 1e-2f : 0.f;
     const float stop_thresh = fast ? 1e-2f : 0.f;
 
-    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
+    auto_cuda_threads();
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
     torch::Tensor result = torch::zeros({height, width, out_data_dim}, data.options());
 
     AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
-            device::render_image_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+            device::render_image_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
                 data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
@@ -689,11 +704,12 @@ torch::Tensor _volume_render_backward_cuda(
     float background_brightness, int sh_order) {
     const int Q = origins.size(0);
 
-    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
+    auto_cuda_threads();
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
     torch::Tensor result = torch::zeros_like(data);
     AT_DISPATCH_FLOATING_TYPES(origins.type(), __FUNCTION__, [&] {
-            device::render_ray_backward_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+            device::render_ray_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
                 data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
@@ -719,12 +735,13 @@ torch::Tensor _volume_render_image_backward_cuda(
     float ndc_focal) {
     const size_t Q = size_t(width) * height;
 
-    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
+    auto_cuda_threads();
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
     torch::Tensor result = torch::zeros_like(data);
 
     AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
-            device::render_image_backward_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+            device::render_image_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
                 data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
