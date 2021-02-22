@@ -591,7 +591,7 @@ class N3Tree(nn.Module):
         Save to from npz file
 
         :param path: npz path
-        :pram shrink: if True (default), applies shrink_to_fit before saving
+        :param shrink: if True (default), applies shrink_to_fit before saving
 
         """
         if shrink:
