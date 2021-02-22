@@ -27,6 +27,7 @@
 #include <cstdint>
 #include "common.cuh"
 
+// I find 256 is faster than 512/1024
 #define CUDA_N_THREADS 256
 
 namespace {
@@ -114,9 +115,9 @@ __device__ __inline__ void trace_ray(
         scalar_t step_size,
         scalar_t background_brightness,
         int sh_order,
-        float delta_scale,
-        float sigma_thresh,
-        float stop_thresh,
+        scalar_t delta_scale,
+        scalar_t sigma_thresh,
+        scalar_t stop_thresh,
         torch::TensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, int32_t> out) {
 
     scalar_t tmin, tmax;
@@ -213,7 +214,7 @@ __device__ __inline__ void trace_ray_backward(
         scalar_t step_size,
         scalar_t background_brightness,
         int sh_order,
-        float delta_scale,
+        scalar_t delta_scale,
     torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
         grad_data) {
 
@@ -264,7 +265,7 @@ __device__ __inline__ void trace_ray_backward(
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
 
-                    float total_color = 0.f;
+                    scalar_t total_color = 0.f;
                     if (sh_order >= 0) {
                         for (int t = 0; t < out_data_dim; ++ t) {
                             int off = t * n_coe;
@@ -295,7 +296,7 @@ __device__ __inline__ void trace_ray_backward(
                 }
                 t += delta_t;
             }
-            float total_grad = 0.f;
+            scalar_t total_grad = 0.f;
             for (int j = 0; j < out_data_dim; ++j)
                 total_grad += grad_out[j];
             accum += light_intensity * background_brightness * total_grad;
@@ -323,7 +324,7 @@ __device__ __inline__ void trace_ray_backward(
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
 
-                    float total_color = 0.f;
+                    scalar_t total_color = 0.f;
                     if (sh_order >= 0) {
                         for (int t = 0; t < out_data_dim; ++ t) {
                             int off = t * n_coe;
@@ -367,8 +368,8 @@ __global__ void render_ray_kernel(
     scalar_t step_size,
     scalar_t background_brightness,
     int sh_order,
-    float sigma_thresh,
-    float stop_thresh,
+    scalar_t sigma_thresh,
+    scalar_t stop_thresh,
     const scalar_t* __restrict__ offset,
     const scalar_t* __restrict__ invradius,
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
@@ -441,7 +442,7 @@ __device__ __inline__ void cam2world_ray(
         c2w,
     scalar_t* dir,
     scalar_t* origin,
-    float fx, float fy,
+    scalar_t fx, scalar_t fy,
     int width, int height) {
     scalar_t x = (ix - 0.5 * width) / fx;
     scalar_t y = -(iy - 0.5 * height) / fy;
@@ -451,6 +452,29 @@ __device__ __inline__ void cam2world_ray(
     dir[1] = c2w[1][0] * x + c2w[1][1] * y + c2w[1][2] * z;
     dir[2] = c2w[2][0] * x + c2w[2][1] * y + c2w[2][2] * z;
     origin[0] = c2w[0][3]; origin[1] = c2w[1][3]; origin[2] = c2w[2][3];
+}
+
+
+template <typename scalar_t>
+__host__ __device__ __inline__ static void world2ndc(
+        int ndc_width, int ndc_height, scalar_t ndc_focal,
+        scalar_t* __restrict__ dir,
+        scalar_t* __restrict__ cen, scalar_t near = 1.f) {
+    scalar_t t = -(near + cen[2]) / dir[2];
+    for (int i = 0; i < 3; ++i) {
+        cen[i] = cen[i] + t * dir[i];
+    }
+
+    dir[0] = -((2 * ndc_focal) / ndc_width) * (dir[0] / dir[2] - cen[0] / cen[2]);
+    dir[1] = -((2 * ndc_focal) / ndc_height) * (dir[1] / dir[2] - cen[1] / cen[2]);
+    dir[2] = -2 * near / cen[2];
+
+    cen[0] = -((2 * ndc_focal) / ndc_width) * (cen[0] / cen[2]);
+    cen[1] = -((2 * ndc_focal) / ndc_height) * (cen[1] / cen[2]);
+    cen[2] = 1 + 2 * near / cen[2];
+
+    scalar_t norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+    dir[0] /= norm; dir[1] /= norm; dir[2] /= norm;
 }
 
 
@@ -465,12 +489,15 @@ __global__ void render_image_kernel(
     scalar_t step_size,
     scalar_t background_brightness,
     int sh_order,
-    float sigma_thresh,
-    float stop_thresh,
-    float fx,
-    float fy,
+    scalar_t sigma_thresh,
+    scalar_t stop_thresh,
+    scalar_t fx,
+    scalar_t fy,
     int width,
     int height,
+    scalar_t ndc_focal,
+    int ndc_width,
+    int ndc_height,
     const scalar_t* __restrict__ offset,
     const scalar_t* __restrict__ invradius,
     torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
@@ -480,6 +507,10 @@ __global__ void render_image_kernel(
     int iy = tid / width, ix = tid % width;
     scalar_t dir[3], origin[3];
     cam2world_ray(ix, iy, c2w, dir, origin, fx, fy, width, height);
+    scalar_t vdir[3] = {dir[0], dir[1], dir[2]};
+    if (ndc_width > 1) {
+        world2ndc(ndc_width, ndc_height, ndc_focal, dir, origin);
+    }
 
     transform_coord<scalar_t>(origin, offset, invradius);
     scalar_t delta_scale = 1.0 / *invradius;
@@ -487,7 +518,7 @@ __global__ void render_image_kernel(
         data, child,
         origin,
         dir,
-        dir,
+        vdir,
         step_size,
         background_brightness,
         sh_order,
@@ -510,10 +541,13 @@ __global__ void render_image_backward_kernel(
     scalar_t step_size,
     scalar_t background_brightness,
     int sh_order,
-    float fx,
-    float fy,
+    scalar_t fx,
+    scalar_t fy,
     int width,
     int height,
+    scalar_t ndc_focal,
+    int ndc_width,
+    int ndc_height,
     const scalar_t* __restrict__ offset,
     const scalar_t* __restrict__ invradius,
     torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
@@ -523,6 +557,10 @@ __global__ void render_image_backward_kernel(
     int iy = tid / width, ix = tid % width;
     scalar_t dir[3], origin[3];
     cam2world_ray(ix, iy, c2w, dir, origin, fx, fy, width, height);
+    scalar_t vdir[3] = {dir[0], dir[1], dir[2]};
+    if (ndc_width > 1) {
+        world2ndc(ndc_width, ndc_height, ndc_focal, dir, origin);
+    }
 
     transform_coord<scalar_t>(origin, offset, invradius);
     scalar_t delta_scale = 1.0 / *invradius;
@@ -531,7 +569,7 @@ __global__ void render_image_backward_kernel(
         grad_out[iy][ix],
         origin,
         dir,
-        dir,
+        vdir,
         step_size,
         background_brightness,
         sh_order,
@@ -565,7 +603,7 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
     const auto Q = origins.size(0);
 
     const float sigma_thresh = fast ? 1e-2f : 0.f;
-    const float stop_thresh = fast ? 1e-8f : 0.f;
+    const float stop_thresh = fast ? 1e-2f : 0.f;
 
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
@@ -594,11 +632,12 @@ torch::Tensor _volume_render_image_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor offset,
     torch::Tensor invradius, torch::Tensor c2w, float fx, float fy, int width,
     int height, float step_size,
-    float background_brightness, int sh_order, bool fast) {
+    float background_brightness, int sh_order, int ndc_width, int ndc_height,
+    float ndc_focal, bool fast) {
     const size_t Q = size_t(width) * height;
 
     const float sigma_thresh = fast ? 1e-2f : 0.f;
-    const float stop_thresh = fast ? 1e-8f : 0.f;
+    const float stop_thresh = fast ? 1e-2f : 0.f;
 
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
@@ -618,6 +657,9 @@ torch::Tensor _volume_render_image_cuda(
                 fy,
                 width,
                 height,
+                ndc_focal,
+                ndc_width,
+                ndc_height,
                 offset.data<scalar_t>(),
                 invradius.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>());
@@ -659,7 +701,8 @@ torch::Tensor _volume_render_image_backward_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
     torch::Tensor offset, torch::Tensor invradius, torch::Tensor c2w, float fx,
     float fy, int width, int height, float step_size,
-    float background_brightness, int sh_order) {
+    float background_brightness, int sh_order, int ndc_width, int ndc_height,
+    float ndc_focal) {
     const size_t Q = size_t(width) * height;
 
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
@@ -679,6 +722,9 @@ torch::Tensor _volume_render_image_backward_cuda(
                 fy,
                 width,
                 height,
+                ndc_focal,
+                ndc_width,
+                ndc_height,
                 offset.data<scalar_t>(),
                 invradius.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());

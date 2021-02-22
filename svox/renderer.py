@@ -30,7 +30,7 @@ Volume rendering utilities
 import torch
 import numpy as np
 from torch import nn, autograd
-from dataclasses import dataclass
+from collections import namedtuple
 from warnings import warn
 
 from svox.helpers import _get_c_extension, LocalIndex
@@ -102,7 +102,10 @@ class _VolumeRenderImageFunction(autograd.Function):
             opts["step_size"],
             opts["background_brightness"],
             opts["sh_order"],
-            opts["fast"]
+            opts.get("ndc_width", 0),
+            opts.get("ndc_height", 0),
+            opts.get("ndc_focal", 0.0),
+            opts["fast"],
         )
         ctx.save_for_backward(data, child, offset, invradius, c2w)
         ctx.opts = opts
@@ -128,7 +131,10 @@ class _VolumeRenderImageFunction(autograd.Function):
                 opts["height"],
                 opts["step_size"],
                 opts["background_brightness"],
-                opts["sh_order"]
+                opts["sh_order"],
+                opts.get("ndc_width", 0),
+                opts.get("ndc_height", 0),
+                opts.get("ndc_focal", 0.0),
             )
         else:
             grad_data = None
@@ -136,13 +142,38 @@ class _VolumeRenderImageFunction(autograd.Function):
         return grad_data, None, None, None, None, None
 
 
+def convert_to_ndc(origins, directions, focal, w, h, near=1.0):
+    """Convert a set of rays to NDC coordinates."""
+    # Shift ray origins to near plane
+    t = -(near + origins[..., 2]) / directions[..., 2]
+    origins = origins + t[..., None] * directions
+
+    dx, dy, dz = directions.unbind(-1)
+    ox, oy, oz = origins.unbind(-1)
+
+    # Projection
+    o0 = -((2 * focal) / w) * (ox / oz)
+    o1 = -((2 * focal) / h) * (oy / oz)
+    o2 = 1 + 2 * near / oz
+
+    d0 = -((2 * focal) / w) * (dx / dz - ox / oz)
+    d1 = -((2 * focal) / h) * (dy / dz - oy / oz)
+    d2 = -2 * near / oz
+
+    origins = torch.stack([o0, o1, o2], -1)
+    directions = torch.stack([d0, d1, d2], -1)
+    return origins, directions
+
+NDCConfig = namedtuple('NDCConfig', ["width", "height", "focal"])
+
 class VolumeRenderer(nn.Module):
     """
     Volume renderer
     """
     def __init__(self, tree, step_size=1e-3,
             background_brightness=1.0,
-            sh_order=None):
+            sh_order=None,
+            ndc : NDCConfig=None):
         """
         Construct volume renderer associated with given N^3 tree.
 
@@ -150,12 +181,16 @@ class VolumeRenderer(nn.Module):
         :param step_size: float step size eps, added to each DDA step
         :param background_brightness: float background brightness, 1.0 = white
         :param sh_order: SH order, -1 = disable, None = auto determine
+        :param ndc: NDCConfig, NDC coordinate configuration,
+                    namedtuple(width, height, focal).
+                    None = no NDC, use usual coordinates
 
         """
         super().__init__()
         self.tree = tree
         self.step_size = step_size
         self.background_brightness = background_brightness
+        self.ndc_config = ndc
         if sh_order is None:
             # Auto SH order
             ddim = tree.data_dim
@@ -174,7 +209,7 @@ class VolumeRenderer(nn.Module):
 
     def forward(self, rays, cuda=True, fast=False):
         """
-        Render a batch of rays. Differentiable (experimental).
+        Render a batch of rays. Differentiable.
 
         :param rays: dict[string, torch.Tensor] of origins (B, 3), dirs (B, 3), viewdirs (B, 3)
         :param rgba: (B, rgb_dim + 1)
@@ -231,7 +266,7 @@ class VolumeRenderer(nn.Module):
             while good_indices.numel() > 0:
                 pos = origins + t[:, None] * dirs
                 treeview = self.tree[LocalIndex(pos)]
-                rgba = treeview.values_diff
+                rgba = treeview.values
                 cube_sz = treeview.lengths_local
                 pos_t = (pos - treeview.corners_local) / cube_sz[:, None]
                 treeview = None
@@ -286,7 +321,7 @@ class VolumeRenderer(nn.Module):
     def render_persp(self, c2w, width=800, height=800, fx=1111.111, fy=None,
             cuda=True, fast=False):
         """
-        Render a perspective image. Differentiable (experimental).
+        Render a perspective image. Differentiable.
 
         :param c2w: torch.Tensor (3, 4) or (4, 4) camera pose matrix (c2w)
         :param width: int output image width
@@ -321,10 +356,14 @@ class VolumeRenderer(nn.Module):
             dirs = dirs.reshape(-1, 3)
             del xx, yy, zz
             dirs = torch.matmul(c2w[None, :3, :3], dirs[..., None])[..., 0]
+            vdirs = dirs
+            if self.ndc_config is not None:
+                origins, dirs = convert_to_ndc(origins, dirs, self.ndc_config.focal,
+                        self.ndc_config.width, self.ndc_config.height)
             rays = {
                 'origins': origins,
                 'dirs': dirs,
-                'viewdirs': dirs
+                'viewdirs': vdirs
             }
             rgb = self(rays, cuda=False, fast=fast)
             return rgb.reshape(height, width, -1)
@@ -339,6 +378,12 @@ class VolumeRenderer(nn.Module):
                 'sh_order': self.sh_order,
                 'fast': fast
             }
+            if self.ndc_config is not None:
+                opts.update({
+                    'ndc_width': self.ndc_config.width,
+                    'ndc_height': self.ndc_config.height,
+                    'ndc_focal': self.ndc_config.focal,
+                })
             return _VolumeRenderImageFunction.apply(
                 self.tree.data,
                 self.tree.child,

@@ -7,7 +7,7 @@ ROOT_DIR = osp.dirname(osp.abspath(__file__))
 
 #  __version__ = None
 #  exec(open('svox/version.py', 'r').read())
-__version__ = '0.2.11'
+__version__ = '0.2.12'
 
 CUDA_FLAGS = []
 INSTALL_REQUIREMENTS = []

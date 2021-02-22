@@ -30,5 +30,5 @@ POSSIBILITY OF SUCH DAMAGE.
 from .version import __version__
 
 from .svox import N3Tree
-from .renderer import VolumeRenderer
+from .renderer import VolumeRenderer, NDCConfig
 from .helpers import N3TreeView, LocalIndex

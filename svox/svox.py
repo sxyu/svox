@@ -293,6 +293,7 @@ class N3Tree(nn.Module):
         """
         Merge leaves into selected 'frontier' nodes
         (i.e., nodes for which all children are leaves).
+        Use shrink_to_fit() to recover memory freed.
 
         :param frontier_sel: selector (int, mask, list of indices etc)
                              for frontier nodes. In same order as reduce_frontier().
@@ -532,6 +533,7 @@ class N3Tree(nn.Module):
         """
         Shrink data & buffers to tightly needed fit tree data,
         possibly dealing with fragmentation caused by merging.
+        This is called by the save() function.
 
 .. warning::
         Will change the nn.Parameter size (data), breaking optimizer!

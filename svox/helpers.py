@@ -323,7 +323,7 @@ def _get_c_extension():
 
     if _C is None:
         warn("CUDA extension svox.csrc could not be loaded! " +
-             "Operations will be slow " +
+             "Operations will be slow.\n" +
              "Please do not import svox in the SVOX source directory.")
     return _C
 
