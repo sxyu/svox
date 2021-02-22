@@ -17,9 +17,9 @@ __device__ __inline__ void clamp_coord(scalar_t* __restrict__ q) {
 template <typename scalar_t>
 __device__ __inline__ void transform_coord(scalar_t* __restrict__ q,
                                            const scalar_t* __restrict__ offset,
-                                           const scalar_t* __restrict__ invradius) {
+                                           const scalar_t* __restrict__ scaling) {
     for (int i = 0; i < 3; ++i) {
-        q[i] = offset[i] + invradius[0] * q[i];
+        q[i] = offset[i] + scaling[i] * q[i];
     }
 }
 

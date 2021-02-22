@@ -41,38 +41,38 @@ namespace py = pybind11;
 
 torch::Tensor _query_vertical_cuda(torch::Tensor data, torch::Tensor child,
                                    torch::Tensor indices, torch::Tensor offset,
-                                   torch::Tensor invradius);
+                                   torch::Tensor scaling);
 torch::Tensor _query_vertical_backward_cuda(torch::Tensor child,
                                             torch::Tensor indices,
                                             torch::Tensor grad_output,
                                             torch::Tensor offset,
-                                            torch::Tensor invradius);
+                                            torch::Tensor scaling);
 void _assign_vertical_cuda(torch::Tensor data, torch::Tensor child,
                            torch::Tensor indices, torch::Tensor values,
-                           torch::Tensor offset, torch::Tensor invradius);
+                           torch::Tensor offset, torch::Tensor scaling);
 
 torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
                                   torch::Tensor origins, torch::Tensor dirs,
                                   torch::Tensor vdirs, torch::Tensor offset,
-                                  torch::Tensor invradius, float step_size,
+                                  torch::Tensor scaling, float step_size,
                                   float background_brightness, int sh_order,
                                   bool fast);
 
 torch::Tensor _volume_render_image_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor offset,
-    torch::Tensor invradius, torch::Tensor c2w, float fx, float fy, int width,
+    torch::Tensor scaling, torch::Tensor c2w, float fx, float fy, int width,
     int height, float step_size, float background_brightness, int sh_order,
     int ndc_width, int ndc_height, float ndc_focal, bool fast);
 
 torch::Tensor _volume_render_backward_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
     torch::Tensor origins, torch::Tensor dirs, torch::Tensor vdirs,
-    torch::Tensor offset, torch::Tensor invradius, float step_size,
+    torch::Tensor offset, torch::Tensor scaling, float step_size,
     float background_brightness, int sh_order);
 
 torch::Tensor _volume_render_image_backward_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
-    torch::Tensor offset, torch::Tensor invradius, torch::Tensor c2w, float fx,
+    torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w, float fx,
     float fy, int width, int height, float step_size,
     float background_brightness, int sh_order, int ndc_width, int ndc_height,
     float ndc_focal);
@@ -85,17 +85,17 @@ torch::Tensor _volume_render_image_backward_cuda(
  * */
 torch::Tensor query_vertical(torch::Tensor data, torch::Tensor child,
                              torch::Tensor indices, torch::Tensor offset,
-                             torch::Tensor invradius) {
+                             torch::Tensor scaling) {
     CHECK_INPUT(data);
     CHECK_INPUT(child);
     CHECK_INPUT(indices);
     CHECK_INPUT(offset);
-    CHECK_INPUT(invradius);
+    CHECK_INPUT(scaling);
     TORCH_CHECK(indices.dim() == 2);
     TORCH_CHECK(indices.is_floating_point());
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
-    return _query_vertical_cuda(data, child, indices, offset, invradius);
+    return _query_vertical_cuda(data, child, indices, offset, scaling);
 }
 
 /**
@@ -109,18 +109,18 @@ torch::Tensor query_vertical_backward(torch::Tensor child,
                                       torch::Tensor indices,
                                       torch::Tensor grad_output,
                                       torch::Tensor offset,
-                                      torch::Tensor invradius) {
+                                      torch::Tensor scaling) {
     CHECK_INPUT(child);
     CHECK_INPUT(grad_output);
     CHECK_INPUT(indices);
     CHECK_INPUT(offset);
-    CHECK_INPUT(invradius);
+    CHECK_INPUT(scaling);
     TORCH_CHECK(indices.dim() == 2);
     TORCH_CHECK(indices.is_floating_point());
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(grad_output));
     return _query_vertical_backward_cuda(child, indices, grad_output, offset,
-                                         invradius);
+                                         scaling);
 }
 
 /**
@@ -131,26 +131,26 @@ torch::Tensor query_vertical_backward(torch::Tensor child,
  * */
 void assign_vertical(torch::Tensor data, torch::Tensor child,
                      torch::Tensor indices, torch::Tensor values,
-                     torch::Tensor offset, torch::Tensor invradius) {
+                     torch::Tensor offset, torch::Tensor scaling) {
     CHECK_INPUT(data);
     CHECK_INPUT(child);
     CHECK_INPUT(indices);
     CHECK_INPUT(values);
     CHECK_INPUT(offset);
-    CHECK_INPUT(invradius);
+    CHECK_INPUT(scaling);
     TORCH_CHECK(indices.dim() == 2);
     TORCH_CHECK(values.dim() == 2);
     TORCH_CHECK(indices.is_floating_point());
     TORCH_CHECK(values.is_floating_point());
 
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
-    _assign_vertical_cuda(data, child, indices, values, offset, invradius);
+    _assign_vertical_cuda(data, child, indices, values, offset, scaling);
 }
 
 torch::Tensor volume_render(torch::Tensor data, torch::Tensor child,
                             torch::Tensor origins, torch::Tensor dirs,
                             torch::Tensor vdirs, torch::Tensor offset,
-                            torch::Tensor invradius, float step_size,
+                            torch::Tensor scaling, float step_size,
                             float background_brightness, int sh_order,
                             bool fast) {
     CHECK_INPUT(data);
@@ -159,17 +159,17 @@ torch::Tensor volume_render(torch::Tensor data, torch::Tensor child,
     CHECK_INPUT(dirs);
     CHECK_INPUT(vdirs);
     CHECK_INPUT(offset);
-    CHECK_INPUT(invradius);
+    CHECK_INPUT(scaling);
     TORCH_CHECK(dirs.size(0) == vdirs.size(0));
     TORCH_CHECK(dirs.size(0) == origins.size(0));
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
     return _volume_render_cuda(data, child, origins, dirs, vdirs, offset,
-                               invradius, step_size, background_brightness,
+                               scaling, step_size, background_brightness,
                                sh_order, fast);
 }
 
 torch::Tensor volume_render_image(torch::Tensor data, torch::Tensor child,
-                                  torch::Tensor offset, torch::Tensor invradius,
+                                  torch::Tensor offset, torch::Tensor scaling,
                                   torch::Tensor c2w, float fx, float fy,
                                   int width, int height, float step_size,
                                   float background_brightness, int sh_order,
@@ -178,12 +178,12 @@ torch::Tensor volume_render_image(torch::Tensor data, torch::Tensor child,
     CHECK_INPUT(data);
     CHECK_INPUT(child);
     CHECK_INPUT(c2w);
-    CHECK_INPUT(invradius);
+    CHECK_INPUT(scaling);
     TORCH_CHECK(c2w.ndimension() == 2);
     TORCH_CHECK(c2w.size(1) == 4);
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
-    return _volume_render_image_cuda(data, child, offset, invradius, c2w, fx,
-                                     fy, width, height, step_size,
+    return _volume_render_image_cuda(data, child, offset, scaling, c2w, fx, fy,
+                                     width, height, step_size,
                                      background_brightness, sh_order, ndc_width,
                                      ndc_height, ndc_focal, fast);
 }
@@ -192,7 +192,7 @@ torch::Tensor volume_render_backward(torch::Tensor data, torch::Tensor child,
                                      torch::Tensor grad_output,
                                      torch::Tensor origins, torch::Tensor dirs,
                                      torch::Tensor vdirs, torch::Tensor offset,
-                                     torch::Tensor invradius, float step_size,
+                                     torch::Tensor scaling, float step_size,
                                      float background_brightness,
                                      int sh_order) {
     CHECK_INPUT(data);
@@ -202,19 +202,19 @@ torch::Tensor volume_render_backward(torch::Tensor data, torch::Tensor child,
     CHECK_INPUT(dirs);
     CHECK_INPUT(vdirs);
     CHECK_INPUT(offset);
-    CHECK_INPUT(invradius);
+    CHECK_INPUT(scaling);
     TORCH_CHECK(dirs.size(0) == vdirs.size(0));
     TORCH_CHECK(dirs.size(0) == origins.size(0));
     TORCH_CHECK(grad_output.ndimension() == 2);
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
     return _volume_render_backward_cuda(data, child, grad_output, origins, dirs,
-                                        vdirs, offset, invradius, step_size,
+                                        vdirs, offset, scaling, step_size,
                                         background_brightness, sh_order);
 }
 
 torch::Tensor volume_render_image_backward(
     torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
-    torch::Tensor offset, torch::Tensor invradius, torch::Tensor c2w, float fx,
+    torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w, float fx,
     float fy, int width, int height, float step_size,
     float background_brightness, int sh_order, int ndc_width, int ndc_height,
     float ndc_focal) {
@@ -222,13 +222,13 @@ torch::Tensor volume_render_image_backward(
     CHECK_INPUT(child);
     CHECK_INPUT(grad_output);
     CHECK_INPUT(c2w);
-    CHECK_INPUT(invradius);
+    CHECK_INPUT(scaling);
     TORCH_CHECK(c2w.ndimension() == 2);
     TORCH_CHECK(c2w.size(1) == 4);
     TORCH_CHECK(grad_output.ndimension() == 3);
     const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
     return _volume_render_image_backward_cuda(
-        data, child, grad_output, offset, invradius, c2w, fx, fy, width, height,
+        data, child, grad_output, offset, scaling, c2w, fx, fy, width, height,
         step_size, background_brightness, sh_order, ndc_width, ndc_height,
         ndc_focal);
 }
@@ -236,23 +236,23 @@ torch::Tensor volume_render_image_backward(
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("query_vertical", &query_vertical, "Query tree at coords [0, 1)",
           py::arg("data"), py::arg("child"), py::arg("indices"),
-          py::arg("offset"), py::arg("invradius"));
+          py::arg("offset"), py::arg("scaling"));
     m.def("query_vertical_backward", &query_vertical_backward,
           "Backwards pass for query_vertical", py::arg("child"),
           py::arg("indices"), py::arg("grad_output"), py::arg("offset"),
-          py::arg("invradius"));
+          py::arg("scaling"));
     m.def("assign_vertical", &assign_vertical,
           "Assign tree at given coords [0, 1)", py::arg("data"),
           py::arg("child"), py::arg("indices"), py::arg("values"),
-          py::arg("offset"), py::arg("invradius"));
+          py::arg("offset"), py::arg("scaling"));
 
     m.def("volume_render", &volume_render, py::arg("data"), py::arg("child"),
           py::arg("origins"), py::arg("dirs"), py::arg("vdirs"),
-          py::arg("offset"), py::arg("invradius"), py::arg("step_size"),
+          py::arg("offset"), py::arg("scaling"), py::arg("step_size"),
           py::arg("background_brightness"), py::arg("sh_order"),
           py::arg("fast"));
     m.def("volume_render_image", &volume_render_image, py::arg("data"),
-          py::arg("child"), py::arg("offset"), py::arg("invradius"),
+          py::arg("child"), py::arg("offset"), py::arg("scaling"),
           py::arg("c2w"), py::arg("fx"), py::arg("fy"), py::arg("width"),
           py::arg("height"), py::arg("step_size"),
           py::arg("background_brightness"), py::arg("sh_order"),
@@ -261,12 +261,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("volume_render_backward", &volume_render_backward, py::arg("data"),
           py::arg("child"), py::arg("grad_output"), py::arg("origins"),
           py::arg("dirs"), py::arg("vdirs"), py::arg("offset"),
-          py::arg("invradius"), py::arg("step_size"),
+          py::arg("scaling"), py::arg("step_size"),
           py::arg("background_brightness"), py::arg("sh_order"));
     m.def("volume_render_image_backward", &volume_render_image_backward,
           py::arg("data"), py::arg("child"), py::arg("grad_output"),
-          py::arg("offset"), py::arg("invradius"), py::arg("c2w"),
-          py::arg("fx"), py::arg("fy"), py::arg("width"), py::arg("height"),
+          py::arg("offset"), py::arg("scaling"), py::arg("c2w"), py::arg("fx"),
+          py::arg("fy"), py::arg("width"), py::arg("height"),
           py::arg("step_size"), py::arg("background_brightness"),
           py::arg("sh_order"), py::arg("ndc_width"), py::arg("ndc_height"),
           py::arg("ndc_focal"));

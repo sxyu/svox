@@ -82,7 +82,7 @@ class N3Tree(nn.Module):
         :param init_reserve: int amount of nodes to reserve initially
         :param init_refine: int number of times to refine entire tree initially
         :param geom_resize_fact: float geometric resizing factor
-        :param radius: float 1/2 side length of cube
+        :param radius: float or list, 1/2 side length of cube (possibly in each dim)
         :param center: list center of space
         :param map_location: str device to put data
 
@@ -107,16 +107,13 @@ class N3Tree(nn.Module):
         self.register_buffer("_n_internal", torch.tensor(1, device=map_location))
         self.register_buffer("_n_free", torch.tensor(0, device=map_location))
 
-        radius = torch.tensor(radius, device=map_location)
-        center = torch.tensor(center, device=map_location)
+        if isinstance(radius, float) or isinstance(radius, int):
+            radius = [radius] * 3
+        radius = torch.tensor(radius, dtype=torch.float32, device=map_location)
+        center = torch.tensor(center, dtype=torch.float32, device=map_location)
 
-        from packaging import version
-        if version.parse(torch.__version__) >= version.parse('1.6.0'):
-            self.register_buffer("invradius", 0.5 / radius, persistent=False)
-            self.register_buffer("offset", 0.5 * (1.0 - center / radius), persistent=False)
-        else:
-            self.register_buffer("invradius", 0.5 / radius)
-            self.register_buffer("offset", 0.5 * (1.0 - center / radius))
+        self.register_buffer("invradius", 0.5 / radius)
+        self.register_buffer("offset", 0.5 * (1.0 - center / radius))
 
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
@@ -605,7 +602,7 @@ class N3Tree(nn.Module):
             "parent_depth" : self.parent_depth.cpu(),
             "n_internal" : self._n_internal.cpu().item(),
             "n_free" : self._n_free.cpu().item(),
-            "invradius" : self.invradius.cpu().item(),
+            "invradius3" : self.invradius.cpu().item(),
             "offset" : self.offset.cpu(),
             "depth_limit": self.depth_limit,
             "geom_resize_fact": self.geom_resize_fact,
@@ -629,7 +626,11 @@ class N3Tree(nn.Module):
         tree.N = tree.child.shape[-1]
         tree.parent_depth = torch.from_numpy(z["parent_depth"]).to(map_location)
         tree._n_internal.fill_(z["n_internal"].item())
-        tree.invradius.fill_(z["invradius"].item())
+        if "invradius3" in z.keys():
+            tree.invradius = torch.from_numpy(z["invradius3"].astype(
+                                np.float32)).to(map_location)
+        else:
+            tree.invradius.fill_(z["invradius"].item())
         tree.offset = torch.from_numpy(z["offset"].astype(np.float32)).to(map_location)
         tree.depth_limit = int(z["depth_limit"])
         tree.geom_resize_fact = float(z["geom_resize_fact"])

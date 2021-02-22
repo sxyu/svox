@@ -53,6 +53,7 @@ __device__ __constant__ const float C3[] = {
     -0.5900435899266435
 };
 
+// Calculate SH basis functions of given order, for given view directions
 template <typename scalar_t>
 __device__ __inline__ void _precalc_sh(
     const int order,
@@ -85,18 +86,29 @@ __device__ __inline__ void _precalc_sh(
 }
 
 template <typename scalar_t>
+__device__ __inline__ scalar_t _get_delta_scale(
+    const scalar_t* __restrict__ scaling,
+    const scalar_t* __restrict__ dir) {
+    const scalar_t dx = dir[0] / scaling[0],
+                   dy = dir[1] / scaling[1],
+                   dz = dir[2] / scaling[2];
+    return sqrtf(dx * dx + dy * dy + dz * dz);
+}
+
+template <typename scalar_t>
 __device__ __inline__ void _dda_unit(
         const scalar_t* __restrict__ cen,
-        const scalar_t* __restrict__ _invdir,
+        const scalar_t* __restrict__ invdir,
         scalar_t* __restrict__ tmin,
         scalar_t* __restrict__ tmax) {
+    // Perform DDA for 1 iteration on a unit cube
     scalar_t t1, t2;
     *tmin = 0.0f;
     *tmax = 1e9f;
 #pragma unroll
     for (int i = 0; i < 3; ++i) {
-        t1 = - cen[i] * _invdir[i];
-        t2 = t1 +  _invdir[i];
+        t1 = - cen[i] * invdir[i];
+        t2 = t1 +  invdir[i];
         *tmin = max(*tmin, min(t1, t2));
         *tmax = min(*tmax, max(t1, t2));
     }
@@ -189,6 +201,8 @@ __device__ __inline__ void trace_ray(
 
                 if (light_intensity <= stop_thresh) {
                     // Full opacity, stop
+                    scalar_t scale = 1.0 / (1.0 - light_intensity);
+                    out[0] *= scale; out[1] *= scale; out[2] *= scale;
                     return;
                 }
             }
@@ -371,14 +385,14 @@ __global__ void render_ray_kernel(
     scalar_t sigma_thresh,
     scalar_t stop_thresh,
     const scalar_t* __restrict__ offset,
-    const scalar_t* __restrict__ invradius,
+    const scalar_t* __restrict__ scaling,
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         out
         ) {
     CUDA_GET_THREAD_ID(tid, origins.size(0));
     scalar_t origin[3] = {origins[tid][0], origins[tid][1], origins[tid][2]};
-    transform_coord<scalar_t>(origin, offset, invradius);
-    scalar_t delta_scale = 1.0 / *invradius;
+    transform_coord<scalar_t>(origin, offset, scaling);
+    const scalar_t delta_scale = _get_delta_scale(scaling, &dirs[tid][0]);
 
     trace_ray<scalar_t>(
         data, child,
@@ -413,14 +427,14 @@ __global__ void render_ray_backward_kernel(
     scalar_t background_brightness,
     int sh_order,
     const scalar_t* __restrict__ offset,
-    const scalar_t* __restrict__ invradius,
+    const scalar_t* __restrict__ scaling,
     torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
         grad_data
         ) {
     CUDA_GET_THREAD_ID(tid, origins.size(0));
     scalar_t origin[3] = {origins[tid][0], origins[tid][1], origins[tid][2]};
-    transform_coord<scalar_t>(origin, offset, invradius);
-    scalar_t delta_scale = 1.0 / *invradius;
+    transform_coord<scalar_t>(origin, offset, scaling);
+    const scalar_t delta_scale = _get_delta_scale(scaling, &dirs[tid][0]);
     trace_ray_backward<scalar_t>(
         data, child,
         grad_out[tid],
@@ -499,7 +513,7 @@ __global__ void render_image_kernel(
     int ndc_width,
     int ndc_height,
     const scalar_t* __restrict__ offset,
-    const scalar_t* __restrict__ invradius,
+    const scalar_t* __restrict__ scaling,
     torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
         out
         ) {
@@ -512,8 +526,8 @@ __global__ void render_image_kernel(
         world2ndc(ndc_width, ndc_height, ndc_focal, dir, origin);
     }
 
-    transform_coord<scalar_t>(origin, offset, invradius);
-    scalar_t delta_scale = 1.0 / *invradius;
+    transform_coord<scalar_t>(origin, offset, scaling);
+    const scalar_t delta_scale = _get_delta_scale(scaling, dir);
     trace_ray<scalar_t>(
         data, child,
         origin,
@@ -549,7 +563,7 @@ __global__ void render_image_backward_kernel(
     int ndc_width,
     int ndc_height,
     const scalar_t* __restrict__ offset,
-    const scalar_t* __restrict__ invradius,
+    const scalar_t* __restrict__ scaling,
     torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
         grad_data
         ) {
@@ -562,8 +576,8 @@ __global__ void render_image_backward_kernel(
         world2ndc(ndc_width, ndc_height, ndc_focal, dir, origin);
     }
 
-    transform_coord<scalar_t>(origin, offset, invradius);
-    scalar_t delta_scale = 1.0 / *invradius;
+    transform_coord<scalar_t>(origin, offset, scaling);
+    const scalar_t delta_scale = _get_delta_scale(scaling, dir);
     trace_ray_backward<scalar_t>(
         data, child,
         grad_out[iy][ix],
@@ -597,7 +611,7 @@ __host__ int get_out_data_dim(int sh_order, int in_data_dim) {
 torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
                             torch::Tensor origins, torch::Tensor dirs,
                             torch::Tensor vdirs, torch::Tensor offset,
-                            torch::Tensor invradius, float step_size,
+                            torch::Tensor scaling, float step_size,
                             float background_brightness,
                             int sh_order, bool fast) {
     const auto Q = origins.size(0);
@@ -621,7 +635,7 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
                 sigma_thresh,
                 stop_thresh,
                 offset.data<scalar_t>(),
-                invradius.data<scalar_t>(),
+                scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
@@ -630,7 +644,7 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
 
 torch::Tensor _volume_render_image_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor offset,
-    torch::Tensor invradius, torch::Tensor c2w, float fx, float fy, int width,
+    torch::Tensor scaling, torch::Tensor c2w, float fx, float fy, int width,
     int height, float step_size,
     float background_brightness, int sh_order, int ndc_width, int ndc_height,
     float ndc_focal, bool fast) {
@@ -661,7 +675,7 @@ torch::Tensor _volume_render_image_cuda(
                 ndc_width,
                 ndc_height,
                 offset.data<scalar_t>(),
-                invradius.data<scalar_t>(),
+                scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
@@ -671,7 +685,7 @@ torch::Tensor _volume_render_image_cuda(
 torch::Tensor _volume_render_backward_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
     torch::Tensor origins, torch::Tensor dirs, torch::Tensor vdirs,
-    torch::Tensor offset, torch::Tensor invradius, float step_size,
+    torch::Tensor offset, torch::Tensor scaling, float step_size,
     float background_brightness, int sh_order) {
     const int Q = origins.size(0);
 
@@ -690,7 +704,7 @@ torch::Tensor _volume_render_backward_cuda(
                 background_brightness,
                 sh_order,
                 offset.data<scalar_t>(),
-                invradius.data<scalar_t>(),
+                scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
@@ -699,7 +713,7 @@ torch::Tensor _volume_render_backward_cuda(
 
 torch::Tensor _volume_render_image_backward_cuda(
     torch::Tensor data, torch::Tensor child, torch::Tensor grad_output,
-    torch::Tensor offset, torch::Tensor invradius, torch::Tensor c2w, float fx,
+    torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w, float fx,
     float fy, int width, int height, float step_size,
     float background_brightness, int sh_order, int ndc_width, int ndc_height,
     float ndc_focal) {
@@ -726,7 +740,7 @@ torch::Tensor _volume_render_image_backward_cuda(
                 ndc_width,
                 ndc_height,
                 offset.data<scalar_t>(),
-                invradius.data<scalar_t>(),
+                scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
