@@ -602,7 +602,7 @@ class N3Tree(nn.Module):
             "parent_depth" : self.parent_depth.cpu(),
             "n_internal" : self._n_internal.cpu().item(),
             "n_free" : self._n_free.cpu().item(),
-            "invradius3" : self.invradius.cpu().item(),
+            "invradius3" : self.invradius.cpu(),
             "offset" : self.offset.cpu(),
             "depth_limit": self.depth_limit,
             "geom_resize_fact": self.geom_resize_fact,
