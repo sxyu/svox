@@ -140,10 +140,10 @@ class N3TreeView:
         Get a list of selected leaf side lengths in tree (world dimensions),
         in same order as values, corners, depths
 
-        :return: (n_leaves) float
+        :return: (n_leaves, 3) float
         """
         self._check_ver()
-        return 2.0 ** (-self.depths.float() - 1.0) / self.tree.invradius
+        return (2.0 ** (-self.depths.float() - 1.0))[:, None] / self.tree.invradius
 
     @property
     def lengths_local(self):
@@ -191,9 +191,11 @@ class N3TreeView:
         self._check_ver()
         corn = self.corners
         length = self.lengths
+        if length.ndim == 1:
+            length = length[:, None]
         u = torch.rand((corn.shape[0], n_samples, 3),
                 device=length.device,
-                dtype=length.dtype) * length[:, None, None]
+                dtype=length.dtype) * length[:, None]
         return corn[:, None] + u
 
     def sample_local(self, n_samples):
