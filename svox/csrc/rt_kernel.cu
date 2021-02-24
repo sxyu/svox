@@ -174,7 +174,7 @@ __device__ __inline__ void _dda_unit(
 
 template <typename scalar_t>
 __device__ __inline__ void trace_ray(
-    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    const torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
@@ -228,7 +228,7 @@ __device__ __inline__ void trace_ray(
             }
 
             int32_t node_id;
-            scalar_t* tree_val = query_single_from_root<scalar_t>(data, child,
+            torch::Half* tree_val = query_single_from_root<scalar_t>(data, child,
                         pos, &cube_sz, &node_id);
 
             scalar_t att;
@@ -237,7 +237,7 @@ __device__ __inline__ void trace_ray(
 
             const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
             const scalar_t delta_t = t_subcube + step_size;
-            const scalar_t sigma = tree_val[data_dim - 1];
+            const scalar_t sigma = __half2float(tree_val[data_dim - 1]);
             if (sigma > sigma_thresh) {
                 att = expf(-delta_t * delta_scale * sigma);
                 const scalar_t weight = light_intensity * (1.f - att);
@@ -247,13 +247,13 @@ __device__ __inline__ void trace_ray(
                         int off = t * n_coe;
                         scalar_t tmp = 0.0;
                         for (int i = 0; i < n_coe; ++i) {
-                            tmp += sh_mult[i] * tree_val[off + i];
+                            tmp += sh_mult[i] * __half2float(tree_val[off + i]);
                         }
                         out[t] += weight / (1.0 + expf(-tmp));
                     }
                 } else {
                     for (int j = 0; j < out_data_dim; ++j) {
-                        out[j] += weight / (1.0 + expf(-tree_val[j]));
+                        out[j] += weight / (1.0 + expf(-__half2float(tree_val[j])));
                     }
                 }
                 light_intensity *= att;
@@ -279,7 +279,7 @@ __device__ __inline__ void trace_ray(
 
 template <typename scalar_t>
 __device__ __inline__ void trace_ray_backward(
-    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    const torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
@@ -326,7 +326,7 @@ __device__ __inline__ void trace_ray_backward(
                 for (int j = 0; j < 3; ++j) pos[j] = origin[j] + t * dir[j];
 
                 int32_t _node_id;
-                const scalar_t* tree_val = query_single_from_root<scalar_t>(data, child,
+                const torch::Half* tree_val = query_single_from_root<scalar_t>(data, child,
                         pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - data.data();
@@ -338,7 +338,7 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + step_size;
-                const scalar_t sigma = tree_val[data_dim - 1];
+                const scalar_t sigma = __half2float(tree_val[data_dim - 1]);
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -349,7 +349,7 @@ __device__ __inline__ void trace_ray_backward(
                             int off = t * n_coe;
                             scalar_t tmp = 0.0;
                             for (int i = 0; i < n_coe; ++i) {
-                                tmp += sh_mult[i] * tree_val[off + i];
+                                tmp += sh_mult[i] * __half2float(tree_val[off + i]);
                             }
                             const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
                             const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
@@ -363,7 +363,8 @@ __device__ __inline__ void trace_ray_backward(
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-tree_val[j]));
+                            const scalar_t sigmoid = 1.0 / (1.0 + expf(
+                                        -__half2float(tree_val[j])));
                             const scalar_t toadd = weight * sigmoid * (1.f - sigmoid) * grad_out[j];
                             atomicAdd(&grad_tree_val[j], toadd);
                             total_color += sigmoid * grad_out[j];
@@ -386,7 +387,7 @@ __device__ __inline__ void trace_ray_backward(
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = origin[j] + t * dir[j];
                 int32_t _node_id;
-                const scalar_t* tree_val = query_single_from_root<scalar_t>(data, child,
+                const torch::Half* tree_val = query_single_from_root<scalar_t>(data, child,
                         pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - data.data();
@@ -398,7 +399,7 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + step_size;
-                const scalar_t sigma = tree_val[data_dim - 1];
+                const scalar_t sigma = __half2float(tree_val[data_dim - 1]);
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -409,13 +410,13 @@ __device__ __inline__ void trace_ray_backward(
                             int off = t * n_coe;
                             scalar_t tmp = 0.0;
                             for (int i = 0; i < n_coe; ++i) {
-                                tmp += sh_mult[i] * tree_val[off + i];
+                                tmp += sh_mult[i] * __half2float(tree_val[off + i]);
                             }
                             total_color += 1.0 / (1.0 + expf(-tmp)) * grad_out[t];
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            total_color += 1.0 / (1.0 + expf(-tree_val[j])) * grad_out[j];
+                            total_color += 1.0 / (1.0 + expf(-__half2float(tree_val[j]))) * grad_out[j];
                         }
                     }
                     light_intensity *= att;
@@ -434,7 +435,7 @@ __device__ __inline__ void trace_ray_backward(
 
 template <typename scalar_t>
 __global__ void render_ray_kernel(
-    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    const torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
@@ -478,7 +479,7 @@ __global__ void render_ray_kernel(
 
 template <typename scalar_t>
 __global__ void render_ray_backward_kernel(
-    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    const torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
@@ -560,7 +561,7 @@ __host__ __device__ __inline__ static void world2ndc(
 
 template <typename scalar_t>
 __global__ void render_image_kernel(
-    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    const torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
@@ -611,7 +612,7 @@ __global__ void render_image_kernel(
 
 template <typename scalar_t>
 __global__ void render_image_backward_kernel(
-    const torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    const torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
@@ -690,9 +691,9 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
     torch::Tensor result = torch::zeros({Q, out_data_dim}, origins.options());
-    AT_DISPATCH_FLOATING_TYPES(origins.type(), __FUNCTION__, [&] {
+    AT_DISPATCH_FLOATING_TYPES(origins.type(), volume_render, [&] {
             device::render_ray_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                data.packed_accessor32<torch::Half, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 dirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
@@ -725,11 +726,11 @@ torch::Tensor _volume_render_image_cuda(
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
-    torch::Tensor result = torch::zeros({height, width, out_data_dim}, data.options());
+    torch::Tensor result = torch::zeros({height, width, out_data_dim}, c2w.options());
 
-    AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
+    AT_DISPATCH_FLOATING_TYPES(c2w.type(), volume_render_image, [&] {
             device::render_image_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                data.packed_accessor32<torch::Half, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 step_size,
@@ -763,10 +764,10 @@ torch::Tensor _volume_render_backward_cuda(
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
-    torch::Tensor result = torch::zeros_like(data);
-    AT_DISPATCH_FLOATING_TYPES(origins.type(), __FUNCTION__, [&] {
+    torch::Tensor result = torch::zeros(data.sizes(), grad_output.options());
+    AT_DISPATCH_FLOATING_TYPES(origins.type(), volume_render_backward, [&] {
             device::render_ray_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                data.packed_accessor32<torch::Half, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
@@ -794,11 +795,11 @@ torch::Tensor _volume_render_image_backward_cuda(
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
     int out_data_dim = get_out_data_dim(sh_order, data.size(4));
-    torch::Tensor result = torch::zeros_like(data);
+    torch::Tensor result = torch::zeros(data.sizes(), grad_output.options());
 
-    AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
+    AT_DISPATCH_FLOATING_TYPES(grad_output.type(), volume_render_image_backward, [&] {
             device::render_image_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                data.packed_accessor32<torch::Half, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),

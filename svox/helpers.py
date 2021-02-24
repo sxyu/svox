@@ -84,6 +84,8 @@ class N3TreeView:
         self._check_ver()
         if isinstance(value, N3TreeView):
             value = value.values_nograd
+        if isinstance(value, torch.Tensor):
+            value = value.half()
         self.tree.data.data[self.key] = value
 
     def refine(self, repeats=1):
@@ -102,7 +104,7 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        ret = self.tree.data[self.key]
+        ret = self.tree.data[self.key].float()
         return ret[0] if self.single_key else ret
 
     @property
@@ -113,7 +115,7 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        ret = self.tree.data.data[self.key]
+        ret = self.tree.data.data[self.key].float()
         return ret[0] if self.single_key else ret
 
     @property

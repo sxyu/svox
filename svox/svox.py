@@ -72,9 +72,9 @@ class N3Tree(nn.Module):
     please re-make any optimizers
     """
     def __init__(self, N=2, data_dim=4, depth_limit=10,
-            init_reserve=1, init_refine=0, geom_resize_fact=1.5,
+            init_reserve=1, init_refine=0, geom_resize_fact=1.0,
             radius=0.5, center=[0.5, 0.5, 0.5],
-            map_location="cpu", fp16=False):
+            map_location="cuda"):
         """
         Construct N^3 Tree
 
@@ -100,7 +100,8 @@ class N3Tree(nn.Module):
                 init_reserve += (N ** i) ** 3
 
         self.register_parameter("data", nn.Parameter(
-            torch.zeros(init_reserve, N, N, N, data_dim, device=map_location)))
+            torch.zeros(init_reserve, N, N, N, data_dim, dtype=torch.float16,
+                device=map_location)))
         self.register_buffer("child", torch.zeros(
             init_reserve, N, N, N, dtype=torch.int32, device=map_location))
         self.register_buffer("parent_depth", torch.zeros(
@@ -210,7 +211,7 @@ class N3Tree(nn.Module):
 
             n_queries, _ = indices.shape
             node_ids = torch.zeros(n_queries, dtype=torch.long, device=indices.device)
-            result = torch.empty((n_queries, self.data_dim), dtype=torch.float32,
+            result = torch.empty((n_queries, self.data_dim), dtype=torch.float16,
                                   device=indices.device)
             remain_indices = torch.arange(n_queries, dtype=torch.long, device=indices.device)
             ind = indices.clone()
@@ -250,7 +251,9 @@ class N3Tree(nn.Module):
                                 self.data, self.child, indices,
                                 self.offset if world else torch.tensor(
                                     [0.0, 0.0, 0.0], device=indices.device),
-                                self.invradius if world else 1.0)
+                                self.invradius if world else torch.full((3,),
+                                    fill_value=1.0,
+                                    device=self.data.device))
             if want_node_ids:
                 return result, node_ids.long()
             else:
@@ -637,12 +640,12 @@ class N3Tree(nn.Module):
             "offset" : self.offset.cpu(),
             "depth_limit": self.depth_limit,
             "geom_resize_fact": self.geom_resize_fact,
-            "data": self.data.data.cpu().numpy().astype(np.float16)
+            "data": self.data.data.cpu().numpy()
         }
         np.savez_compressed(path, **data)
 
     @classmethod
-    def load(cls, path, map_location='cpu'):
+    def load(cls, path, map_location='cuda'):
         """
         Load from npz file
 
@@ -665,7 +668,7 @@ class N3Tree(nn.Module):
         tree.offset = torch.from_numpy(z["offset"].astype(np.float32)).to(map_location)
         tree.depth_limit = int(z["depth_limit"])
         tree.geom_resize_fact = float(z["geom_resize_fact"])
-        tree.data.data = torch.from_numpy(z["data"].astype(np.float32)).to(map_location)
+        tree.data.data = torch.from_numpy(z["data"].astype(np.float16)).to(map_location)
         if 'n_free' in z.keys():
             tree._n_free.fill_(z["n_free"].item())
         else:
@@ -745,6 +748,7 @@ class N3Tree(nn.Module):
         cap_needed = max(cap_needed, int(self.capacity * (self.geom_resize_fact - 1.0)))
         self.data = nn.Parameter(torch.cat((self.data.data,
                         torch.zeros((cap_needed, *self.data.data.shape[1:]),
+                                dtype=self.data.dtype,
                                 device=self.data.device)), dim=0))
         self.child = torch.cat((self.child,
                                 torch.zeros((cap_needed, *self.child.shape[1:]),
