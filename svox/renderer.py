@@ -1,6 +1,6 @@
 #  [BSD 2-CLAUSE LICENSE]
 #
-#  Copyright Alex Yu 2021
+#  Copyright SVOX Authors 2021
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -41,7 +41,9 @@ _C = _get_c_extension()
 class _VolumeRenderFunction(autograd.Function):
     @staticmethod
     def forward(ctx, data, child,
-            origins, dirs, viewdirs, offset, invradius, opts):
+            origins, dirs, viewdirs, offset, invradius, weight_accum, opts):
+        if weight_accum is None:
+            weight_accum = torch.empty(0, device=data.device)
         out = _C.volume_render(
             data,
             child,
@@ -53,7 +55,8 @@ class _VolumeRenderFunction(autograd.Function):
             opts["step_size"],
             opts["background_brightness"],
             opts["sh_order"],
-            opts["fast"]
+            opts["fast"],
+            weight_accum,
         )
         ctx.save_for_backward(data, child, origins, dirs,
                 viewdirs, offset, invradius)
@@ -84,11 +87,13 @@ class _VolumeRenderFunction(autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, None, None, None, None, None, None, None
+        return grad_data, None, None, None, None, None, None, None, None
 
 class _VolumeRenderImageFunction(autograd.Function):
     @staticmethod
-    def forward(ctx, data, child, offset, invradius, c2w, opts):
+    def forward(ctx, data, child, offset, invradius, c2w, weight_accum, opts):
+        if weight_accum is None:
+            weight_accum = torch.empty(0, device=data.device)
         out = _C.volume_render_image(
             data,
             child,
@@ -106,6 +111,7 @@ class _VolumeRenderImageFunction(autograd.Function):
             opts.get("ndc_height", 0),
             opts.get("ndc_focal", 0.0),
             opts["fast"],
+            weight_accum,
         )
         ctx.save_for_backward(data, child, offset, invradius, c2w)
         ctx.opts = opts
@@ -139,7 +145,7 @@ class _VolumeRenderImageFunction(autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, None, None, None, None, None
+        return grad_data, None, None, None, None, None, None
 
 
 def convert_to_ndc(origins, directions, focal, w, h, near=1.0):
@@ -165,15 +171,18 @@ def convert_to_ndc(origins, directions, focal, w, h, near=1.0):
     return origins, directions
 
 NDCConfig = namedtuple('NDCConfig', ["width", "height", "focal"])
+Rays = namedtuple('Rays', ["origins", "dirs", "viewdirs"])
 
 class VolumeRenderer(nn.Module):
     """
     Volume renderer
     """
-    def __init__(self, tree, step_size=1e-3,
-            background_brightness=1.0,
-            sh_order=None,
-            ndc : NDCConfig=None):
+    def __init__(self, tree,
+            step_size : float=1e-3,
+            background_brightness : float=1.0,
+            sh_order : int=None,
+            ndc : NDCConfig=None,
+        ):
         """
         Construct volume renderer associated with given N^3 tree.
 
@@ -206,12 +215,13 @@ class VolumeRenderer(nn.Module):
                 self.sh_order = -1
         else:
             self.sh_order = sh_order
+        self.tree._weight_accum = None
 
-    def forward(self, rays, cuda=True, fast=False):
+    def forward(self, rays : Rays, cuda=True, fast=False):
         """
         Render a batch of rays. Differentiable.
 
-        :param rays: dict[string, torch.Tensor] of origins (B, 3), dirs (B, 3), viewdirs (B, 3)
+        :param rays: namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)
         :param rgba: (B, rgb_dim + 1)
                 where *rgb_dim* is :code:`tree.data_dim - 1` if
                 :code:`sh_order == -1`
@@ -246,7 +256,7 @@ class VolumeRenderer(nn.Module):
                     tmax = torch.min(tmax, torch.max(t1, t2))
                 return tmin, tmax
 
-            origins, dirs, viewdirs = rays["origins"], rays["dirs"], rays["viewdirs"]
+            origins, dirs, viewdirs = rays.origins, rays.dirs, rays.viewdirs
             origins = self.tree.world2tree(origins)
             B = dirs.size(0)
             assert viewdirs.size(0) == B and origins.size(0) == B
@@ -310,11 +320,12 @@ class VolumeRenderer(nn.Module):
             return _VolumeRenderFunction.apply(
                 self.tree.data,
                 self.tree.child,
-                rays["origins"],
-                rays["dirs"],
-                rays["viewdirs"],
+                rays.origins,
+                rays.dirs,
+                rays.viewdirs,
                 self.tree.offset,
                 self.tree.invradius,
+                self.tree._weight_accum,
                 opts
             )
 
@@ -390,5 +401,6 @@ class VolumeRenderer(nn.Module):
                 self.tree.offset,
                 self.tree.invradius,
                 c2w,
+                self.tree._weight_accum,
                 opts
             )

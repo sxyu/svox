@@ -1,6 +1,6 @@
 #  [BSD 2-CLAUSE LICENSE]
 #
-#  Copyright Alex Yu 2021
+#  Copyright SVOX Authors 2021
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -30,6 +30,7 @@ class N3TreeView:
     def __init__(self, tree, key):
         self.tree = tree
         local = False
+        self.single_key = False
         if isinstance(key, LocalIndex):
             key = key.val
             local = True
@@ -53,6 +54,7 @@ class N3TreeView:
             self._packed_ids = None
             if isinstance(leaf_key, int):
                 leaf_key = torch.tensor([leaf_key], device=tree.data.device)
+                self.single_key = True
             leaf_node = self.tree._all_leaves()
             leaf_node = leaf_node.__getitem__(leaf_key).T
         if isinstance(key, tuple):
@@ -100,7 +102,8 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        return self.tree.data[self.key]
+        ret = self.tree.data[self.key]
+        return ret[0] if self.single_key else ret
 
     @property
     def values_nograd(self):
@@ -110,7 +113,8 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        return self.tree.data.data[self.key]
+        ret = self.tree.data.data[self.key]
+        return ret[0] if self.single_key else ret
 
     @property
     def shape(self):
@@ -213,6 +217,13 @@ class N3TreeView:
                 dtype=length.dtype) * length[:, None, None]
         return corn[:, None] + u
 
+    def aux(self, arr):
+        """
+        Index an auxiliary tree data array of size (capacity, N, N, N, *)
+        using this view
+        """
+        return arr[self.key]
+
     # In-place modification helpers
     def normal_(self, mean=0.0, std=1.0):
         """
@@ -274,6 +285,14 @@ class N3TreeView:
         data[inf_mask & (data < 0)] = -inf_val
         self.tree.data.data[self.key] = data
 
+    def __setitem__(self, key, value):
+        """
+        Warning: inefficient impl
+        """
+        val = self.values_nograd
+        val.__setitem__(key, value)
+        self.set(val)
+
     def _indexer(self):
         return torch.stack(self.key[:4], dim=-1)
 
@@ -301,7 +320,7 @@ def _redirect_funcs():
                    '__radd__', '__rsub__', '__rmul__',
                    '__rdiv__', '__abs__', '__pos__', '__neg__',
                    '__len__', 'clamp', 'clamp_max', 'clamp_min', 'relu', 'sigmoid',
-                   'max', 'min', 'mean', 'sum']
+                   'max', 'min', 'mean', 'sum', '__getitem__']
     def redirect_func(redir_func, grad=False):
         def redir_impl(self, *args, **kwargs):
             return getattr(self.values if grad else self.values_nograd, redir_func)(
@@ -330,5 +349,9 @@ def _get_c_extension():
     return _C
 
 class LocalIndex:
+    """
+    To query N3Tree using 'local' index :math:`[0,1]^3`,
+    tree[LocalIndex(points)] where points (N, 3)
+    """
     def __init__(self, val):
         self.val = val

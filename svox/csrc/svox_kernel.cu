@@ -38,12 +38,13 @@ __device__ __inline__ scalar_t* get_tree_leaf_ptr(
        const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits> child,
        const scalar_t* __restrict__ xyz_ind,
        const scalar_t* __restrict__ offset,
-       const scalar_t* __restrict__ scaling) {
+       const scalar_t* __restrict__ scaling,
+       int32_t* node_id) {
     scalar_t xyz[3] = {xyz_ind[0], xyz_ind[1], xyz_ind[2]};
     transform_coord<scalar_t>(xyz, offset, scaling);
     scalar_t _cube_sz;
     return query_single_from_root<scalar_t>(data, child,
-            xyz, &_cube_sz);
+            xyz, &_cube_sz, node_id);
 }
 
 template <typename scalar_t>
@@ -53,9 +54,11 @@ __global__ void query_single_kernel(
        const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> indices,
        const scalar_t* __restrict__ offset,
        const scalar_t* __restrict__ scaling,
-       torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> result) {
+       torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> result,
+       torch::PackedTensorAccessor32<int32_t, 1, torch::RestrictPtrTraits> node_ids) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
-    scalar_t* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling);
+    scalar_t* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling,
+            &node_ids[tid]);
     for (int i = 0; i < data.size(4); ++i)
         result[tid][i] = data_ptr[i];
 }
@@ -69,8 +72,9 @@ __global__ void query_single_kernel_backward(
        const scalar_t* __restrict__ scaling,
        torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits> grad_data) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
+    int32_t _node_id;
     scalar_t* data_ptr = get_tree_leaf_ptr(grad_data,
-            child, &indices[tid][0], offset, scaling);
+            child, &indices[tid][0], offset, scaling, &_node_id);
     for (int i = 0; i < grad_output.size(1); ++i)
         atomicAdd(&data_ptr[i], grad_output[tid][i]);
 }
@@ -84,7 +88,9 @@ __global__ void assign_single_kernel(
        const scalar_t* __restrict__ offset,
        const scalar_t* __restrict__ scaling) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
-    scalar_t* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling);
+    int32_t _node_id;
+    scalar_t* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling,
+            &_node_id);
     for (int i = 0; i < values.size(1); ++i)
         data_ptr[i] = values[tid][i];
 }
@@ -92,14 +98,16 @@ __global__ void assign_single_kernel(
 }  // namespace device
 }  // namespace
 
-torch::Tensor _query_vertical_cuda(
+std::tuple<torch::Tensor, torch::Tensor>
+    _query_vertical_cuda(
         torch::Tensor data, torch::Tensor child,
         torch::Tensor indices,
         torch::Tensor offset, torch::Tensor scaling) {
     const auto Q = indices.size(0), K = data.size(4);
 
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
-    torch::Tensor result = torch::zeros({Q, K}, indices.options());
+    torch::Tensor result = torch::empty({Q, K}, indices.options());
+    torch::Tensor node_ids = torch::empty({Q}, child.options());
     AT_DISPATCH_FLOATING_TYPES(indices.type(), __FUNCTION__, [&] {
         device::query_single_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
                 data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
@@ -107,10 +115,11 @@ torch::Tensor _query_vertical_cuda(
                 indices.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 offset.data<scalar_t>(),
                 scaling.data<scalar_t>(),
-                result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
+                result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                node_ids.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
-    return result;
+    return std::make_tuple(result, node_ids);
 }
 
 void _assign_vertical_cuda(

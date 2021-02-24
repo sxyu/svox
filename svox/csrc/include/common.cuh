@@ -30,12 +30,13 @@ __device__ __inline__ scalar_t* query_single_from_root(
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
     scalar_t* __restrict__ xyz_inout,
-    scalar_t* __restrict__ cube_sz_out) {
+    scalar_t* __restrict__ cube_sz_out,
+    int32_t* __restrict__ node_id_out) {
     const scalar_t N = child.size(1);
     clamp_coord<scalar_t>(xyz_inout);
 
-    int node_id = 0;
-    int u, v, w;
+    int32_t node_id = 0;
+    int32_t u, v, w;
     *cube_sz_out = N;
     while (true) {
         xyz_inout[0] *= N;
@@ -50,6 +51,7 @@ __device__ __inline__ scalar_t* query_single_from_root(
 
         const int32_t skip = child[node_id][u][v][w];
         if (skip == 0) {
+            *node_id_out = node_id * N * N * N + u * N * N + v * N + w;
             return &data[node_id][u][v][w][0];
         }
         *cube_sz_out *= N;

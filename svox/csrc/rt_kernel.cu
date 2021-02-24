@@ -78,6 +78,20 @@ __device__ __constant__ const float C4[] = {
     0.6258357354491761,
 };
 
+template<typename scalar_t>
+__host__ __device__ __inline__ static scalar_t _norm(
+                scalar_t* dir) {
+    return sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
+}
+
+template<typename scalar_t>
+__host__ __device__ __inline__ static void _normalize(
+                scalar_t* dir) {
+    scalar_t norm = _norm(dir);
+    dir[0] /= norm; dir[1] /= norm; dir[2] /= norm;
+}
+
+
 // Calculate SH basis functions of given order, for given view directions
 template <typename scalar_t>
 __device__ __inline__ void _precalc_sh(
@@ -127,11 +141,15 @@ __device__ __inline__ void _precalc_sh(
 template <typename scalar_t>
 __device__ __inline__ scalar_t _get_delta_scale(
     const scalar_t* __restrict__ scaling,
-    const scalar_t* __restrict__ dir) {
-    const scalar_t dx = dir[0] / scaling[0],
-                   dy = dir[1] / scaling[1],
-                   dz = dir[2] / scaling[2];
-    return sqrtf(dx * dx + dy * dy + dz * dz);
+    scalar_t* __restrict__ dir) {
+    dir[0] *= scaling[0];
+    dir[1] *= scaling[1];
+    dir[2] *= scaling[2];
+    scalar_t delta_scale = 1.f / _norm(dir);
+    dir[0] *= delta_scale;
+    dir[1] *= delta_scale;
+    dir[2] *= delta_scale;
+    return delta_scale;
 }
 
 template <typename scalar_t>
@@ -169,7 +187,8 @@ __device__ __inline__ void trace_ray(
         scalar_t delta_scale,
         scalar_t sigma_thresh,
         scalar_t stop_thresh,
-        torch::TensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, int32_t> out) {
+        torch::TensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, int32_t> out,
+        scalar_t* __restrict__ weight_accum = nullptr) {
 
     scalar_t tmin, tmax;
     scalar_t invdir[3];
@@ -208,8 +227,9 @@ __device__ __inline__ void trace_ray(
                 pos[j] = origin[j] + t * dir[j];
             }
 
+            int32_t node_id;
             scalar_t* tree_val = query_single_from_root<scalar_t>(data, child,
-                        pos, &cube_sz);
+                        pos, &cube_sz, &node_id);
 
             scalar_t att;
             scalar_t subcube_tmin, subcube_tmax;
@@ -237,6 +257,10 @@ __device__ __inline__ void trace_ray(
                     }
                 }
                 light_intensity *= att;
+
+                if (weight_accum != nullptr) {
+                    weight_accum[node_id] += weight;
+                }
 
                 if (light_intensity <= stop_thresh) {
                     // Full opacity, stop
@@ -301,8 +325,9 @@ __device__ __inline__ void trace_ray_backward(
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = origin[j] + t * dir[j];
 
+                int32_t _node_id;
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(data, child,
-                        pos, &cube_sz);
+                        pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - data.data();
                 scalar_t* grad_tree_val = grad_data.data() + curr_leaf_offset;
@@ -360,8 +385,9 @@ __device__ __inline__ void trace_ray_backward(
             scalar_t light_intensity = 1.f, t = tmin, cube_sz;
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = origin[j] + t * dir[j];
+                int32_t _node_id;
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(data, child,
-                        pos, &cube_sz);
+                        pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - data.data();
                 scalar_t* grad_tree_val = grad_data.data() + curr_leaf_offset;
@@ -426,17 +452,18 @@ __global__ void render_ray_kernel(
     const scalar_t* __restrict__ offset,
     const scalar_t* __restrict__ scaling,
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        out
-        ) {
+        out,
+    scalar_t* __restrict__ weight_accum) {
     CUDA_GET_THREAD_ID(tid, origins.size(0));
     scalar_t origin[3] = {origins[tid][0], origins[tid][1], origins[tid][2]};
     transform_coord<scalar_t>(origin, offset, scaling);
-    const scalar_t delta_scale = _get_delta_scale(scaling, &dirs[tid][0]);
+    scalar_t dir[3] = {dirs[tid][0], dirs[tid][1], dirs[tid][2]};
+    const scalar_t delta_scale = _get_delta_scale(scaling, dir);
 
     trace_ray<scalar_t>(
         data, child,
         origin,
-        &dirs[tid][0],
+        dir,
         &vdirs[tid][0],
         step_size,
         background_brightness,
@@ -444,7 +471,8 @@ __global__ void render_ray_kernel(
         delta_scale,
         sigma_thresh,
         stop_thresh,
-        out[tid]);
+        out[tid],
+        weight_accum);
 }
 
 
@@ -473,12 +501,13 @@ __global__ void render_ray_backward_kernel(
     CUDA_GET_THREAD_ID(tid, origins.size(0));
     scalar_t origin[3] = {origins[tid][0], origins[tid][1], origins[tid][2]};
     transform_coord<scalar_t>(origin, offset, scaling);
-    const scalar_t delta_scale = _get_delta_scale(scaling, &dirs[tid][0]);
+    scalar_t dir[3] = {dirs[tid][0], dirs[tid][1], dirs[tid][2]};
+    const scalar_t delta_scale = _get_delta_scale(scaling, dir);
     trace_ray_backward<scalar_t>(
         data, child,
         grad_out[tid],
         origin,
-        &dirs[tid][0],
+        dir,
         &vdirs[tid][0],
         step_size,
         background_brightness,
@@ -486,7 +515,6 @@ __global__ void render_ray_backward_kernel(
         delta_scale,
         grad_data);
 }
-
 
 template <typename scalar_t>
 __device__ __inline__ void cam2world_ray(
@@ -526,8 +554,7 @@ __host__ __device__ __inline__ static void world2ndc(
     cen[1] = -((2 * ndc_focal) / ndc_height) * (cen[1] / cen[2]);
     cen[2] = 1 + 2 * near / cen[2];
 
-    scalar_t norm = sqrtf(dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]);
-    dir[0] /= norm; dir[1] /= norm; dir[2] /= norm;
+    _normalize(dir);
 }
 
 
@@ -554,8 +581,8 @@ __global__ void render_image_kernel(
     const scalar_t* __restrict__ offset,
     const scalar_t* __restrict__ scaling,
     torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
-        out
-        ) {
+        out,
+    scalar_t* __restrict__ weight_accum) {
     CUDA_GET_THREAD_ID(tid, width * height);
     int iy = tid / width, ix = tid % width;
     scalar_t dir[3], origin[3];
@@ -578,7 +605,8 @@ __global__ void render_image_kernel(
         delta_scale,
         sigma_thresh,
         stop_thresh,
-        out[iy][ix]);
+        out[iy][ix],
+        weight_accum);
 }
 
 template <typename scalar_t>
@@ -652,7 +680,7 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
                             torch::Tensor vdirs, torch::Tensor offset,
                             torch::Tensor scaling, float step_size,
                             float background_brightness,
-                            int sh_order, bool fast) {
+                            int sh_order, bool fast, at::Tensor weight_accum) {
     const auto Q = origins.size(0);
 
     const float sigma_thresh = fast ? 1e-2f : 0.f;
@@ -676,7 +704,8 @@ torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
                 stop_thresh,
                 offset.data<scalar_t>(),
                 scaling.data<scalar_t>(),
-                result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
+                result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                weight_accum.numel() > 0 ?  weight_accum.data<scalar_t>() : nullptr);
     });
     CUDA_CHECK_ERRORS;
     return result;
@@ -687,7 +716,7 @@ torch::Tensor _volume_render_image_cuda(
     torch::Tensor scaling, torch::Tensor c2w, float fx, float fy, int width,
     int height, float step_size,
     float background_brightness, int sh_order, int ndc_width, int ndc_height,
-    float ndc_focal, bool fast) {
+    float ndc_focal, bool fast, at::Tensor weight_accum) {
     const size_t Q = size_t(width) * height;
 
     const float sigma_thresh = fast ? 1e-2f : 0.f;
@@ -717,7 +746,8 @@ torch::Tensor _volume_render_image_cuda(
                 ndc_height,
                 offset.data<scalar_t>(),
                 scaling.data<scalar_t>(),
-                result.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>());
+                result.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
+                weight_accum.numel() > 0 ?  weight_accum.data<scalar_t>() : nullptr);
     });
     CUDA_CHECK_ERRORS;
     return result;

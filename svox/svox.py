@@ -1,6 +1,6 @@
 #  [BSD 2-CLAUSE LICENSE]
 #
-#  Copyright Alex Yu 2021
+#  Copyright SVOX Authors 2021
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -39,12 +39,13 @@ _C = _get_c_extension()
 class _QueryVerticalFunction(autograd.Function):
     @staticmethod
     def forward(ctx, data, child, indices, offset, invradius):
-        out = _C.query_vertical(data, child, indices, offset, invradius)
+        out, node_ids = _C.query_vertical(data, child, indices, offset, invradius)
+        ctx.mark_non_differentiable(node_ids)
         ctx.save_for_backward(child, indices, offset, invradius)
-        return out
+        return out, node_ids
 
     @staticmethod
-    def backward(ctx, grad_out):
+    def backward(ctx, grad_out, dummy):
         child, indices, offset, invradius = ctx.saved_tensors
 
         grad_out = grad_out.contiguous()
@@ -72,7 +73,8 @@ class N3Tree(nn.Module):
     """
     def __init__(self, N=2, data_dim=4, depth_limit=10,
             init_reserve=1, init_refine=0, geom_resize_fact=1.5,
-            radius=0.5, center=[0.5, 0.5, 0.5], map_location="cpu"):
+            radius=0.5, center=[0.5, 0.5, 0.5],
+            map_location="cpu", fp16=False):
         """
         Construct N^3 Tree
 
@@ -117,8 +119,11 @@ class N3Tree(nn.Module):
 
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
+
         self._ver = 0
         self._invalidate()
+        self._lock_tree_structure = False
+        self._weight_accum = None
 
         self.refine(repeats=init_refine)
 
@@ -195,7 +200,7 @@ class N3Tree(nn.Module):
         assert not indices.requires_grad  # Grad wrt indices not supported
         assert len(indices.shape) == 2
 
-        if not cuda or _C is None or not self.data.is_cuda or want_node_ids:
+        if not cuda or _C is None or not self.data.is_cuda:
             if not want_node_ids:
                 warn("Using slow query")
             if world:
@@ -241,11 +246,15 @@ class N3Tree(nn.Module):
 
             return result
         else:
-            return _QueryVerticalFunction.apply(
-                    self.data, self.child, indices,
-                    self.offset if world else torch.tensor(
-                        [0.0, 0.0, 0.0], device=indices.device),
-                    self.invradius if world else 1.0)
+            result, node_ids = _QueryVerticalFunction.apply(
+                                self.data, self.child, indices,
+                                self.offset if world else torch.tensor(
+                                    [0.0, 0.0, 0.0], device=indices.device),
+                                self.invradius if world else 1.0)
+            if want_node_ids:
+                return result, node_ids.long()
+            else:
+                return result
 
     # Special features
     def snap(self, indices):
@@ -440,6 +449,8 @@ class N3Tree(nn.Module):
     memory will be wasted. We do not dedup here for efficiency reasons.
 
         """
+        if self._lock_tree_structure:
+            raise RuntimeError("Tree locked")
         with torch.no_grad():
             resized = False
             for repeat_id in range(repeats):
@@ -499,6 +510,8 @@ class N3Tree(nn.Module):
                     in xyz orde rto identify leaf within internal node
 
         """
+        if self._lock_tree_structure:
+            raise RuntimeError("Tree locked")
         assert min(xyzi) >= 0 and max(xyzi) < self.N
         if self.parent_depth[intnode_idx, 1] >= self.depth_limit:
             return
@@ -535,6 +548,8 @@ class N3Tree(nn.Module):
 .. warning::
         Will change the nn.Parameter size (data), breaking optimizer!
         """
+        if self._lock_tree_structure:
+            raise RuntimeError("Tree locked")
         n_int = self.n_internal
         n_free = self._n_free.item()
         new_cap = n_int - n_free
@@ -583,7 +598,23 @@ class N3Tree(nn.Module):
 
     @property
     def max_depth(self):
+        """
+        Maximum tree depth - 1
+        """
         return torch.max(self.depths).item()
+
+    def accumulate_weights(self):
+        """
+        Begin weight accumulation
+
+.. code-block:: python
+        with tree.accumulate_weights() as accum:
+            ...
+
+        # (n_leaves) in same order as values etc.
+        accum = accum()
+        """
+        return WeightAccumulator(self)
 
     # Persistence
     def save(self, path, shrink=True):
@@ -763,7 +794,7 @@ class N3Tree(nn.Module):
 def _redirect_to_n3view():
     redir_props = ['depths', 'lengths', 'lengths_local', 'corners', 'corners_local',
                    'values', 'values_local', 'ndim', 'shape']
-    redir_funcs = ['sample', 'sample_local', 'dim', 'numel', 'size', '__len__',
+    redir_funcs = ['sample', 'sample_local', 'aux', 'dim', 'numel', 'size', '__len__',
             'normal_', 'clamp_', 'uniform_', 'relu_', 'sigmoid_', 'nan_to_num_']
     def redirect_func(redir_func):
         def redir_impl(self, *args, **kwargs):
@@ -778,3 +809,26 @@ def _redirect_to_n3view():
     for redir_prop in redir_props:
         redirect_prop(redir_prop)
 _redirect_to_n3view()
+
+class WeightAccumulator():
+    def __init__(self, tree):
+        self.tree = tree
+
+    def __enter__(self):
+        self.tree._lock_tree_structure = True
+        self.tree._weight_accum = torch.zeros(
+                self.tree.child.shape, dtype=torch.float32,
+                device=self.tree.data.device)
+        self.weight_accum = self.tree._weight_accum
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.tree._weight_accum = None
+        self.tree._lock_tree_structure = False
+
+    @property
+    def value(self):
+        return self.weight_accum
+
+    def __call__(self):
+        return self.tree.aux(self.weight_accum)

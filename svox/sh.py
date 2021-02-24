@@ -1,6 +1,6 @@
 #  [BSD 2-CLAUSE LICENSE]
 #
-#  Copyright Alex Yu 2021
+#  Copyright SVOX Authors 2021
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
@@ -120,9 +120,9 @@ def eval_sh_bases(order, dirs):
     obtained through simple multiplication.
 
     :param order: int SH order. Currently, 0-3 supported
-    :param dirs: jnp.ndarray (..., 3) unit directions
+    :param dirs: torch.Tensor (..., 3) unit directions
 
-    :return: jnp.ndarray (..., (order+1) ** 2)
+    :return: torch.Tensor (..., (order+1) ** 2)
     """
     assert order <= 4 and order >= 0
     result = torch.empty((*dirs.shape[:-1], (order + 1) ** 2), dtype=dirs.dtype, device=dirs.device)
