@@ -281,14 +281,10 @@ class N3Tree(nn.Module):
         :return: partial N3Tree (copy)
 
         """
-        if data_sel is None:
-            new_data_dim = self.data_dim
-        else:
-            sel_indices = torch.arange(self.data_dim)[data_sel]
-            if sel_indices.ndim == 0:
-                sel_indices = sel_indices.unsqueeze(0)
-            new_data_dim = sel_indices.numel()
-        t2 = N3Tree(N=self.N, data_dim=new_data_dim,
+        sel_indices = torch.arange(self.data_dim)[data_sel]
+        if sel_indices.ndim == 0:
+            sel_indices = sel_indices.unsqueeze(0)
+        t2 = N3Tree(N=self.N, data_dim=sel_indices.numel(),
                 depth_limit=self.depth_limit,
                 geom_resize_fact=self.geom_resize_fact,
                 map_location=self.data.data.device)
@@ -298,17 +294,8 @@ class N3Tree(nn.Module):
         t2.parent_depth = self.parent_depth.clone()
         t2._n_internal = self._n_internal.clone()
         t2._n_free = self._n_free.clone()
-        if data_sel is None:
-            t2.data.data = self.data.data.clone()
-        else:
-            t2.data.data = self.data.data[..., sel_indices].contiguous()
+        t2.data.data = self.data.data[..., sel_indices].contiguous()
         return t2
-
-    def clone(self):
-        """
-        Deep copy the tree
-        """
-        return self.partial()
 
     # 'Frontier' operations (node merging/pruning)
     def merge(self, frontier_sel=None, op=torch.mean):
