@@ -235,82 +235,81 @@ class VolumeRenderer(nn.Module):
 
         """
         if not cuda or _C is None or not self.tree.data.is_cuda:
-            assert False  # Pure PyTorch not supported for now
-            #  warn("Using slow volume rendering")
-            #  def dda_unit(cen, invdir):
-            #      """
-            #      DDA ray tracing step
-            #
-            #      :param cen: jnp.ndarray [B, 3] center
-            #      :param invdir: jnp.ndarray [B, 3] 1/dir
-            #
-            #      :return: tmin jnp.ndarray [B] at least 0;
-            #               tmax jnp.ndarray [B]
-            #      """
-            #      B = invdir.shape[0]
-            #      tmin = torch.zeros((B,), device=cen.device)
-            #      tmax = torch.full((B,), fill_value=1e9, device=cen.device)
-            #      for i in range(3):
-            #          t1 = -cen[..., i] * invdir[..., i]
-            #          t2 = t1 + invdir[..., i]
-            #          tmin = torch.max(tmin, torch.min(t1, t2))
-            #          tmax = torch.min(tmax, torch.max(t1, t2))
-            #      return tmin, tmax
-            #
-            #  origins, dirs, viewdirs = rays.origins, rays.dirs, rays.viewdirs
-            #  origins = self.tree.world2tree(origins)
-            #  B = dirs.size(0)
-            #  assert viewdirs.size(0) == B and origins.size(0) == B
-            #  dirs /= torch.norm(dirs, dim=-1, keepdim=True)
-            #
-            #  sh_mult = None
-            #  if self.sh_order >= 0:
-            #      sh_mult = sh.eval_sh_bases(self.sh_order, viewdirs)[:, None]
-            #
-            #  invdirs = 1.0 / (dirs + 1e-9)
-            #  t, tmax = dda_unit(origins, invdirs)
-            #  light_intensity = torch.ones(B, device=origins.device)
-            #  out_rgb = torch.zeros((B, 3), device=origins.device)
-            #
-            #  good_indices = torch.arange(B, device=origins.device)
-            #  delta_scale = 1.0 / self.tree.invradius
-            #  while good_indices.numel() > 0:
-            #      pos = origins + t[:, None] * dirs
-            #      treeview = self.tree[LocalIndex(pos)]
-            #      rgba = treeview.values
-            #      cube_sz = treeview.lengths_local
-            #      pos_t = (pos - treeview.corners_local) / cube_sz[:, None]
-            #      treeview = None
-            #
-            #      subcube_tmin, subcube_tmax = dda_unit(pos_t, invdirs)
-            #
-            #      delta_t = (subcube_tmax - subcube_tmin) * cube_sz + self.step_size
-            #      att = torch.exp(- delta_t * torch.relu(rgba[..., -1]) * delta_scale)
-            #      weight = light_intensity[good_indices] * (1.0 - att)
-            #      rgb = rgba[:, :-1]
-            #      if self.sh_order >= 0:
-            #          rgb_sh = rgb.reshape(-1, 3, (self.sh_order + 1) ** 2)  # [B', 3, n_sh_coeffs]
-            #          rgb = torch.sigmoid(torch.sum(sh_mult * rgb_sh, dim=-1))   # [B', 3]
-            #      else:
-            #          rgb = torch.sigmoid(rgb)
-            #      rgb = weight[:, None] * rgb[:, :3]
-            #
-            #      out_rgb[good_indices] += rgb
-            #      light_intensity[good_indices] *= att
-            #      t += delta_t
-            #
-            #
-            #      mask = t < tmax
-            #      good_indices = good_indices[mask]
-            #      origins = origins[mask]
-            #      dirs = dirs[mask]
-            #      invdirs = invdirs[mask]
-            #      t = t[mask]
-            #      if sh_mult is not None:
-            #          sh_mult = sh_mult[mask]
-            #      tmax = tmax[mask]
-            #  out_rgb += self.background_brightness * light_intensity[:, None]
-            #  return out_rgb
+            warn("Using slow volume rendering")
+            def dda_unit(cen, invdir):
+                """
+                DDA ray tracing step
+
+                :param cen: jnp.ndarray [B, 3] center
+                :param invdir: jnp.ndarray [B, 3] 1/dir
+
+                :return: tmin jnp.ndarray [B] at least 0;
+                         tmax jnp.ndarray [B]
+                """
+                B = invdir.shape[0]
+                tmin = torch.zeros((B,), device=cen.device)
+                tmax = torch.full((B,), fill_value=1e9, device=cen.device)
+                for i in range(3):
+                    t1 = -cen[..., i] * invdir[..., i]
+                    t2 = t1 + invdir[..., i]
+                    tmin = torch.max(tmin, torch.min(t1, t2))
+                    tmax = torch.min(tmax, torch.max(t1, t2))
+                return tmin, tmax
+
+            origins, dirs, viewdirs = rays.origins, rays.dirs, rays.viewdirs
+            origins = self.tree.world2tree(origins)
+            B = dirs.size(0)
+            assert viewdirs.size(0) == B and origins.size(0) == B
+            dirs /= torch.norm(dirs, dim=-1, keepdim=True)
+
+            sh_mult = None
+            if self.sh_order >= 0:
+                sh_mult = sh.eval_sh_bases(self.sh_order, viewdirs)[:, None]
+
+            invdirs = 1.0 / (dirs + 1e-9)
+            t, tmax = dda_unit(origins, invdirs)
+            light_intensity = torch.ones(B, device=origins.device)
+            out_rgb = torch.zeros((B, 3), device=origins.device)
+
+            good_indices = torch.arange(B, device=origins.device)
+            delta_scale = 1.0 / self.tree.invradius
+            while good_indices.numel() > 0:
+                pos = origins + t[:, None] * dirs
+                treeview = self.tree[LocalIndex(pos)]
+                rgba = treeview.values
+                cube_sz = treeview.lengths_local
+                pos_t = (pos - treeview.corners_local) / cube_sz[:, None]
+                treeview = None
+
+                subcube_tmin, subcube_tmax = dda_unit(pos_t, invdirs)
+
+                delta_t = (subcube_tmax - subcube_tmin) * cube_sz + self.step_size
+                att = torch.exp(- delta_t * torch.relu(rgba[..., -1]) * delta_scale)
+                weight = light_intensity[good_indices] * (1.0 - att)
+                rgb = rgba[:, :-1]
+                if self.sh_order >= 0:
+                    rgb_sh = rgb.reshape(-1, 3, (self.sh_order + 1) ** 2)  # [B', 3, n_sh_coeffs]
+                    rgb = torch.sigmoid(torch.sum(sh_mult * rgb_sh, dim=-1))   # [B', 3]
+                else:
+                    rgb = torch.sigmoid(rgb)
+                rgb = weight[:, None] * rgb[:, :3]
+
+                out_rgb[good_indices] += rgb
+                light_intensity[good_indices] *= att
+                t += delta_t
+
+
+                mask = t < tmax
+                good_indices = good_indices[mask]
+                origins = origins[mask]
+                dirs = dirs[mask]
+                invdirs = invdirs[mask]
+                t = t[mask]
+                if sh_mult is not None:
+                    sh_mult = sh_mult[mask]
+                tmax = tmax[mask]
+            out_rgb += self.background_brightness * light_intensity[:, None]
+            return out_rgb
         else:
             opts = {
                 'step_size': self.step_size,

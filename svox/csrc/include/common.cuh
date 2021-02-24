@@ -3,7 +3,6 @@
 #include <torch/extension.h>
 #include <cuda.h>
 #include <cuda_runtime.h>
-#include <cuda_fp16.h>
 
 namespace {
 namespace device {
@@ -24,9 +23,9 @@ __device__ __inline__ void transform_coord(scalar_t* __restrict__ q,
     }
 }
 
-template <typename scalar_t, typename data_storage_t=__half>
-__device__ __inline__ data_storage_t* query_single_from_root(
-    torch::PackedTensorAccessor32<data_storage_t, 5, torch::RestrictPtrTraits>
+template <typename scalar_t>
+__device__ __inline__ scalar_t* query_single_from_root(
+    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,

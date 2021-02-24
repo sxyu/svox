@@ -32,9 +32,9 @@
 namespace {
 namespace device {
 
-template <typename scalar_t, typename data_storage_t>
-__device__ __inline__ data_storage_t* get_tree_leaf_ptr(
-       torch::PackedTensorAccessor32<data_storage_t, 5, torch::RestrictPtrTraits> data,
+template <typename scalar_t>
+__device__ __inline__ scalar_t* get_tree_leaf_ptr(
+       torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits> data,
        const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits> child,
        const scalar_t* __restrict__ xyz_ind,
        const scalar_t* __restrict__ offset,
@@ -43,13 +43,13 @@ __device__ __inline__ data_storage_t* get_tree_leaf_ptr(
     scalar_t xyz[3] = {xyz_ind[0], xyz_ind[1], xyz_ind[2]};
     transform_coord<scalar_t>(xyz, offset, scaling);
     scalar_t _cube_sz;
-    return query_single_from_root<scalar_t, data_storage_t>(data, child,
+    return query_single_from_root<scalar_t>(data, child,
             xyz, &_cube_sz, node_id);
 }
 
 template <typename scalar_t>
 __global__ void query_single_kernel(
-       torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits> data,
+       torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits> data,
        const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits> child,
        const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> indices,
        const scalar_t* __restrict__ offset,
@@ -57,10 +57,10 @@ __global__ void query_single_kernel(
        torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> result,
        torch::PackedTensorAccessor32<int32_t, 1, torch::RestrictPtrTraits> node_ids) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
-    torch::Half* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling,
+    scalar_t* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling,
             &node_ids[tid]);
     for (int i = 0; i < data.size(4); ++i)
-        result[tid][i] = __half2float(data_ptr[i]);
+        result[tid][i] = data_ptr[i];
 }
 
 template <typename scalar_t>
@@ -81,7 +81,7 @@ __global__ void query_single_kernel_backward(
 
 template <typename scalar_t>
 __global__ void assign_single_kernel(
-       torch::PackedTensorAccessor32<torch::Half, 5, torch::RestrictPtrTraits> data,
+       torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits> data,
        const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits> child,
        const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> indices,
        const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> values,
@@ -89,10 +89,10 @@ __global__ void assign_single_kernel(
        const scalar_t* __restrict__ scaling) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
     int32_t _node_id;
-    torch::Half* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling,
+    scalar_t* data_ptr = get_tree_leaf_ptr(data, child, &indices[tid][0], offset, scaling,
             &_node_id);
     for (int i = 0; i < values.size(1); ++i)
-        data_ptr[i] = __float2half(values[tid][i]);
+        data_ptr[i] = values[tid][i];
 }
 
 }  // namespace device
@@ -108,14 +108,14 @@ std::tuple<torch::Tensor, torch::Tensor>
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
     torch::Tensor result = torch::empty({Q, K}, indices.options());
     torch::Tensor node_ids = torch::empty({Q}, child.options());
-    AT_DISPATCH_FLOATING_TYPES(indices.type(), query_vertical, [&] {
-        device::query_single_kernel<float><<<blocks, CUDA_N_THREADS>>>(
-                data.packed_accessor32<torch::Half, 5, torch::RestrictPtrTraits>(),
+    AT_DISPATCH_FLOATING_TYPES(indices.type(), __FUNCTION__, [&] {
+        device::query_single_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-                indices.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
-                offset.data<float>(),
-                scaling.data<float>(),
-                result.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
+                indices.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                offset.data<scalar_t>(),
+                scaling.data<scalar_t>(),
+                result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 node_ids.packed_accessor32<int32_t, 1, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
@@ -127,9 +127,9 @@ void _assign_vertical_cuda(
         torch::Tensor indices, torch::Tensor values,
         torch::Tensor offset, torch::Tensor scaling) {
     const int blocks = CUDA_N_BLOCKS_NEEDED(indices.size(0), CUDA_N_THREADS);
-    AT_DISPATCH_FLOATING_TYPES(indices.type(), assign_vertical, [&] {
+    AT_DISPATCH_FLOATING_TYPES(indices.type(), __FUNCTION__, [&] {
         device::assign_single_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
-                data.packed_accessor32<torch::Half, 5, torch::RestrictPtrTraits>(),
+                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 indices.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 values.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
@@ -151,7 +151,7 @@ torch::Tensor _query_vertical_backward_cuda(
 
     torch::Tensor grad_data = torch::zeros({M, N, N, N, K}, grad_output.options());
 
-    AT_DISPATCH_FLOATING_TYPES(grad_output.type(), query_vertical_backward, [&] {
+    AT_DISPATCH_FLOATING_TYPES(indices.type(), __FUNCTION__, [&] {
         device::query_single_kernel_backward<scalar_t><<<blocks, CUDA_N_THREADS>>>(
                 child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
                 indices.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
