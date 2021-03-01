@@ -34,19 +34,57 @@ from collections import namedtuple
 from warnings import warn
 
 from svox.helpers import _get_c_extension, LocalIndex
-from svox import sh
+
+class DataFormat:
+    RGBA = 0
+    SH = 1
+    SG = 2
+    ASG = 3
+    def __init__(self, txt):
+        nonalph_idx = [c.isalpha() for c in txt]
+        if False in nonalph_idx:
+            nonalph_idx = nonalph_idx.index(False)
+            self.basis_dim = int(txt[nonalph_idx:])
+            format_type = txt[:nonalph_idx]
+            if format_type == "SH":
+                self.format = DataFormat.SH
+            elif format_type == "SG":
+                self.format = DataFormat.SG
+            elif format_type == "ASG":
+                self.format = DataFormat.ASG
+            else:
+                self.format = DataFormat.RGBA
+        else:
+            self.format = DataFormat.RGBA
+            self.basis_dim = -1
+
+    def __repr__(self):
+        if self.format == DataFormat.SH:
+            r = "SH"
+        elif self.format == DataFormat.SG:
+            r = "SG"
+        elif self.format == DataFormat.ASG:
+            r = "ASG"
+        else:
+            r = "RGBA"
+        if self.basis_dim >= 0:
+            r += str(self.basis_dim)
+        return r
 
 _C = _get_c_extension()
 
 class _VolumeRenderFunction(autograd.Function):
     @staticmethod
-    def forward(ctx, data, child,
+    def forward(ctx, data, child, extra_data,
             origins, dirs, viewdirs, offset, invradius, weight_accum, opts):
         if weight_accum is None:
             weight_accum = torch.empty(0, device=data.device)
+        if extra_data is None:
+            extra_data = torch.empty((0, 0), device=data.device)
         out = _C.volume_render(
             data,
             child,
+            extra_data,
             origins,
             dirs,
             viewdirs,
@@ -54,18 +92,19 @@ class _VolumeRenderFunction(autograd.Function):
             invradius,
             opts["step_size"],
             opts["background_brightness"],
-            opts["sh_order"],
+            opts["format"],
+            opts["basis_dim"],
             opts["fast"],
             weight_accum,
         )
-        ctx.save_for_backward(data, child, origins, dirs,
+        ctx.save_for_backward(data, child, extra_data, origins, dirs,
                 viewdirs, offset, invradius)
         ctx.opts = opts
         return out
 
     @staticmethod
     def backward(ctx, grad_out):
-        data, child, origins, dirs, viewdirs, offset, invradius = \
+        data, child, extra_data, origins, dirs, viewdirs, offset, invradius = \
                 ctx.saved_tensors
         opts = ctx.opts
 
@@ -74,6 +113,7 @@ class _VolumeRenderFunction(autograd.Function):
             grad_data = _C.volume_render_backward(
                 data,
                 child,
+                extra_data,
                 grad_out,
                 origins,
                 dirs,
@@ -82,21 +122,26 @@ class _VolumeRenderFunction(autograd.Function):
                 invradius,
                 opts["step_size"],
                 opts["background_brightness"],
-                opts["sh_order"],
+                opts["format"],
+                opts["basis_dim"],
             )
         else:
             grad_data = None
 
-        return grad_data, None, None, None, None, None, None, None, None
+        return grad_data, None, None, None, None, None, None, None, None, None
 
 class _VolumeRenderImageFunction(autograd.Function):
     @staticmethod
-    def forward(ctx, data, child, offset, invradius, c2w, weight_accum, opts):
+    def forward(ctx, data, child, extra_data,
+                offset, invradius, c2w, weight_accum, opts):
         if weight_accum is None:
             weight_accum = torch.empty(0, device=data.device)
+        if extra_data is None:
+            extra_data = torch.empty((0, 0), device=data.device)
         out = _C.volume_render_image(
             data,
             child,
+            extra_data,
             offset,
             invradius,
             c2w,
@@ -106,20 +151,21 @@ class _VolumeRenderImageFunction(autograd.Function):
             opts["height"],
             opts["step_size"],
             opts["background_brightness"],
-            opts["sh_order"],
+            opts["format"],
+            opts["basis_dim"],
             opts.get("ndc_width", 0),
             opts.get("ndc_height", 0),
             opts.get("ndc_focal", 0.0),
             opts["fast"],
             weight_accum,
         )
-        ctx.save_for_backward(data, child, offset, invradius, c2w)
+        ctx.save_for_backward(data, child, extra_data, offset, invradius, c2w)
         ctx.opts = opts
         return out
 
     @staticmethod
     def backward(ctx, grad_out):
-        data, child, offset, invradius, c2w = ctx.saved_tensors
+        data, child, extra_data, offset, invradius, c2w = ctx.saved_tensors
         opts = ctx.opts
 
         grad_out = grad_out.contiguous()
@@ -127,6 +173,7 @@ class _VolumeRenderImageFunction(autograd.Function):
             grad_data = _C.volume_render_image_backward(
                 data,
                 child,
+                extra_data,
                 grad_out,
                 offset,
                 invradius,
@@ -137,7 +184,8 @@ class _VolumeRenderImageFunction(autograd.Function):
                 opts["height"],
                 opts["step_size"],
                 opts["background_brightness"],
-                opts["sh_order"],
+                opts["format"],
+                opts["basis_dim"],
                 opts.get("ndc_width", 0),
                 opts.get("ndc_height", 0),
                 opts.get("ndc_focal", 0.0),
@@ -145,7 +193,7 @@ class _VolumeRenderImageFunction(autograd.Function):
         else:
             grad_data = None
 
-        return grad_data, None, None, None, None, None, None
+        return grad_data, None, None, None, None, None, None, None
 
 
 def convert_to_ndc(origins, directions, focal, w, h, near=1.0):
@@ -180,7 +228,6 @@ class VolumeRenderer(nn.Module):
     def __init__(self, tree,
             step_size : float=1e-3,
             background_brightness : float=1.0,
-            sh_order : int=None,
             ndc : NDCConfig=None,
         ):
         """
@@ -189,7 +236,6 @@ class VolumeRenderer(nn.Module):
         :param tree: N3Tree instance for rendering
         :param step_size: float step size eps, added to each DDA step
         :param background_brightness: float background brightness, 1.0 = white
-        :param sh_order: SH order, -1 = disable, None = auto determine
         :param ndc: NDCConfig, NDC coordinate configuration,
                     namedtuple(width, height, focal).
                     None = no NDC, use usual coordinates
@@ -200,21 +246,16 @@ class VolumeRenderer(nn.Module):
         self.step_size = step_size
         self.background_brightness = background_brightness
         self.ndc_config = ndc
-        if sh_order is None:
+        if tree.data_format is not None:
+            self.data_format = DataFormat(tree.data_format)
+        else:
+            warn("Legacy N3Tree (pre 0.2.18) without data_format, auto-infering SH order")
             # Auto SH order
             ddim = tree.data_dim
-            if ddim == 4 * 3 + 1:
-                self.sh_order = 1
-            elif ddim == 9 * 3 + 1:
-                self.sh_order = 2
-            elif ddim == 16 * 3 + 1:
-                self.sh_order = 3
-            elif ddim == 25 * 3 + 1:
-                self.sh_order = 4
+            if ddim == 4:
+                self.data_format = DataFormat("")
             else:
-                self.sh_order = -1
-        else:
-            self.sh_order = sh_order
+                self.data_format = DataFormat(f"SH{(ddim - 1) // 3}")
         self.tree._weight_accum = None
 
     def forward(self, rays : Rays, cuda=True, fast=False):
@@ -224,8 +265,8 @@ class VolumeRenderer(nn.Module):
         :param rays: namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)
         :param rgba: (B, rgb_dim + 1)
                 where *rgb_dim* is :code:`tree.data_dim - 1` if
-                :code:`sh_order == -1`
-                or :code:`(tree.data_dim - 1) / (sh_order + 1)^2` else
+                :code:`data_format.format == RGBA`
+                or :code:`data_format.basis_dim` else
         :param cuda: whether to use CUDA kernel if available. If false,
                      uses only PyTorch version.
         :param fast: if True, enables faster evaluation, potentially leading
@@ -235,6 +276,7 @@ class VolumeRenderer(nn.Module):
 
         """
         if not cuda or _C is None or not self.tree.data.is_cuda:
+            assert False  # Not supported in current version, use CUDA kernel
             warn("Using slow volume rendering")
             def dda_unit(cen, invdir):
                 """
@@ -263,8 +305,8 @@ class VolumeRenderer(nn.Module):
             dirs /= torch.norm(dirs, dim=-1, keepdim=True)
 
             sh_mult = None
-            if self.sh_order >= 0:
-                sh_mult = sh.eval_sh_bases(self.sh_order, viewdirs)[:, None]
+            if self.data_format.format != DataFormat.RGBA:
+                sh_mult = maybe_eval_basis(self.data_format.basis_dim, viewdirs)[:, None]
 
             invdirs = 1.0 / (dirs + 1e-9)
             t, tmax = dda_unit(origins, invdirs)
@@ -287,8 +329,9 @@ class VolumeRenderer(nn.Module):
                 att = torch.exp(- delta_t * torch.relu(rgba[..., -1]) * delta_scale)
                 weight = light_intensity[good_indices] * (1.0 - att)
                 rgb = rgba[:, :-1]
-                if self.sh_order >= 0:
-                    rgb_sh = rgb.reshape(-1, 3, (self.sh_order + 1) ** 2)  # [B', 3, n_sh_coeffs]
+                if self.data_format.format != DataFormat.RGBA:
+                    # [B', 3, n_sh_coeffs]
+                    rgb_sh = rgb.reshape(-1, 3, self.data_format.basis_dim)
                     rgb = torch.sigmoid(torch.sum(sh_mult * rgb_sh, dim=-1))   # [B', 3]
                 else:
                     rgb = torch.sigmoid(rgb)
@@ -314,12 +357,14 @@ class VolumeRenderer(nn.Module):
             opts = {
                 'step_size': self.step_size,
                 'background_brightness':self.background_brightness,
-                'sh_order': self.sh_order,
+                'format': self.data_format.format,
+                'basis_dim': self.data_format.basis_dim,
                 'fast': fast
             }
             return _VolumeRenderFunction.apply(
                 self.tree.data,
                 self.tree.child,
+                self.tree.extra_data,
                 rays.origins,
                 rays.dirs,
                 rays.viewdirs,
@@ -346,14 +391,15 @@ class VolumeRenderer(nn.Module):
 
         :return: (height, width, rgb_dim + 1)
                 where *rgb_dim* is :code:`tree.data_dim - 1` if
-                :code:`sh_order == -1`
-                or :code:`(tree.data_dim - 1) / (sh_order + 1)^2` else
+                :code:`data_format.format == DataFormat.RGBA`
+                or :code:`data_format.basis_dim` else
 
         """
         if fy is None:
             fy = fx
 
         if not cuda or _C is None or not self.tree.data.is_cuda:
+            assert False  # Not supported in current version, use CUDA kernel
             origins = c2w[None, :3, 3].expand(height * width, -1)
             yy, xx = torch.meshgrid(
                 torch.arange(height, dtype=torch.float32, device=c2w.device),
@@ -386,7 +432,8 @@ class VolumeRenderer(nn.Module):
                 'height': height,
                 'step_size': self.step_size,
                 'background_brightness':self.background_brightness,
-                'sh_order': self.sh_order,
+                'format': self.data_format.format,
+                'basis_dim': self.data_format.basis_dim,
                 'fast': fast
             }
             if self.ndc_config is not None:
@@ -398,6 +445,7 @@ class VolumeRenderer(nn.Module):
             return _VolumeRenderImageFunction.apply(
                 self.tree.data,
                 self.tree.child,
+                self.tree.extra_data,
                 self.tree.offset,
                 self.tree.invradius,
                 c2w,
