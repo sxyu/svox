@@ -662,7 +662,7 @@ class N3Tree(nn.Module):
         if self.data_format is not None:
             data["data_format"] = self.data_format
         if self.extra_data is not None:
-            data["extra_data"] = self.extra_data
+            data["extra_data"] = self.extra_data.cpu()
         if compress:
             np.savez_compressed(path, **data)
         else:
