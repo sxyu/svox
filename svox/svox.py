@@ -74,7 +74,9 @@ class N3Tree(nn.Module):
     def __init__(self, N=2, data_dim=4, depth_limit=10,
             init_reserve=1, init_refine=0, geom_resize_fact=1.5,
             radius=0.5, center=[0.5, 0.5, 0.5],
-            map_location="cpu", fp16=False):
+            data_format=None,
+            extra_data=None,
+            map_location="cpu"):
         """
         Construct N^3 Tree
 
@@ -86,6 +88,8 @@ class N3Tree(nn.Module):
         :param geom_resize_fact: float geometric resizing factor
         :param radius: float or list, 1/2 side length of cube (possibly in each dim)
         :param center: list center of space
+        :param data_format: a string to indicate the data format
+        :param extra_data: extra data to include with tree
         :param map_location: str device to put data
 
         """
@@ -119,6 +123,10 @@ class N3Tree(nn.Module):
 
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
+        self.data_format = data_format
+        if extra_data is not None:
+            assert isinstance(extra_data, torch.Tensor)
+            self.register_buffer("extra_data", extra_data.to(device=map_location))
 
         self._ver = 0
         self._invalidate()
@@ -272,16 +280,17 @@ class N3Tree(nn.Module):
         """
         Get partial tree with some of the data dimensions (channels)
         E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only
-
         :param data_sel: data channel selector, default is all channels
-
         :return: partial N3Tree (copy)
-
         """
-        sel_indices = torch.arange(self.data_dim)[data_sel]
-        if sel_indices.ndim == 0:
-            sel_indices = sel_indices.unsqueeze(0)
-        t2 = N3Tree(N=self.N, data_dim=sel_indices.numel(),
+        if data_sel is None:
+            new_data_dim = self.data_dim
+        else:
+            sel_indices = torch.arange(self.data_dim)[data_sel]
+            if sel_indices.ndim == 0:
+                sel_indices = sel_indices.unsqueeze(0)
+            new_data_dim = sel_indices.numel()
+        t2 = N3Tree(N=self.N, data_dim=new_data_dim,
                 depth_limit=self.depth_limit,
                 geom_resize_fact=self.geom_resize_fact,
                 map_location=self.data.data.device)
@@ -291,8 +300,17 @@ class N3Tree(nn.Module):
         t2.parent_depth = self.parent_depth.clone()
         t2._n_internal = self._n_internal.clone()
         t2._n_free = self._n_free.clone()
-        t2.data.data = self.data.data[..., sel_indices].contiguous()
+        if data_sel is None:
+            t2.data.data = self.data.data.clone()
+        else:
+            t2.data.data = self.data.data[..., sel_indices].contiguous()
         return t2
+
+    def clone(self):
+        """
+        Deep copy the tree
+        """
+        return self.partial()
 
     # 'Frontier' operations (node merging/pruning)
     def merge(self, frontier_sel=None, op=torch.mean):
@@ -608,6 +626,7 @@ class N3Tree(nn.Module):
         Begin weight accumulation
 
 .. code-block:: python
+
         with tree.accumulate_weights() as accum:
             ...
 
@@ -617,12 +636,13 @@ class N3Tree(nn.Module):
         return WeightAccumulator(self)
 
     # Persistence
-    def save(self, path, shrink=True):
+    def save(self, path, shrink=True, compress=True):
         """
         Save to from npz file
 
         :param path: npz path
         :param shrink: if True (default), applies shrink_to_fit before saving
+        :param compress: whether to compress the npz; may be slow
 
         """
         if shrink:
@@ -639,7 +659,14 @@ class N3Tree(nn.Module):
             "geom_resize_fact": self.geom_resize_fact,
             "data": self.data.data.cpu().numpy().astype(np.float16)
         }
-        np.savez_compressed(path, **data)
+        if self.data_format is not None:
+            data["data_format"] = self.data_format
+        if self.extra_data is not None:
+            data["extra_data"] = self.extra_data
+        if compress:
+            np.savez_compressed(path, **data)
+        else:
+            np.savez(path, **data)
 
     @classmethod
     def load(cls, path, map_location='cpu'):
@@ -657,7 +684,7 @@ class N3Tree(nn.Module):
         tree.N = tree.child.shape[-1]
         tree.parent_depth = torch.from_numpy(z["parent_depth"]).to(map_location)
         tree._n_internal.fill_(z["n_internal"].item())
-        if "invradius3" in z.keys():
+        if "invradius3" in z.files:
             tree.invradius = torch.from_numpy(z["invradius3"].astype(
                                 np.float32)).to(map_location)
         else:
@@ -666,10 +693,13 @@ class N3Tree(nn.Module):
         tree.depth_limit = int(z["depth_limit"])
         tree.geom_resize_fact = float(z["geom_resize_fact"])
         tree.data.data = torch.from_numpy(z["data"].astype(np.float32)).to(map_location)
-        if 'n_free' in z.keys():
+        if 'n_free' in z.files:
             tree._n_free.fill_(z["n_free"].item())
         else:
             tree._n_free.zero_()
+        tree.data_format = z['data_format'].item() if 'data_format' in z.files else None
+        tree.extra_data = torch.from_numpy(z['extra_data']).to(map_location) if \
+                          'extra_data' in z.files else None
         return tree
 
     # Magic
