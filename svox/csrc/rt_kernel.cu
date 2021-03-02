@@ -26,15 +26,9 @@
 
 #include <cstdint>
 #include "common.cuh"
+#include "data_spec.cuh"
 
 namespace {
-
-enum {
-    FORMAT_RGBA,
-    FORMAT_SH,
-    FORMAT_SG,
-    FORMAT_ASG,
-};
 
 // Automatically choose number of CUDA threads based on HW CUDA kernel count
 int cuda_n_threads = -1;
@@ -741,158 +735,144 @@ __host__ int get_out_data_dim(int format, int basis_dim, int in_data_dim) {
 
 }  // namespace
 
-torch::Tensor _volume_render_cuda(torch::Tensor data, torch::Tensor child,
-                            torch::Tensor extra_data,
-                            torch::Tensor origins, torch::Tensor dirs,
-                            torch::Tensor vdirs, torch::Tensor offset,
-                            torch::Tensor scaling, float step_size,
-                            float background_brightness,
-                            int format, int basis_dim, bool fast, at::Tensor weight_accum) {
-    const auto Q = origins.size(0);
+torch::Tensor volume_render(TreeSpec& tree, RaySpec& rays, RenderOptions& opt) {
+    tree.check();
+    rays.check();
+    const auto Q = rays.origins.size(0);
 
-    const float sigma_thresh = fast ? 1e-2f : 0.f;
-    const float stop_thresh = fast ? 1e-2f : 0.f;
+    const float sigma_thresh = opt.fast ? 1e-2f : 0.f;
+    const float stop_thresh = opt.fast ? 1e-2f : 0.f;
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(format, basis_dim, data.size(4));
-    torch::Tensor result = torch::zeros({Q, out_data_dim}, origins.options());
-    AT_DISPATCH_FLOATING_TYPES(origins.type(), __FUNCTION__, [&] {
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    torch::Tensor result = torch::zeros({Q, out_data_dim}, rays.origins.options());
+    AT_DISPATCH_FLOATING_TYPES(rays.origins.type(), __FUNCTION__, [&] {
             device::render_ray_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
-                child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-                extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                dirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                vdirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                step_size,
-                background_brightness,
-                format,
-                basis_dim,
+                tree.data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                tree.child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                rays.origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                rays.dirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                rays.vdirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                opt.step_size,
+                opt.background_brightness,
+                opt.format,
+                opt.basis_dim,
                 sigma_thresh,
                 stop_thresh,
-                offset.data<scalar_t>(),
-                scaling.data<scalar_t>(),
+                tree.offset.data<scalar_t>(),
+                tree.scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                weight_accum.numel() > 0 ?  weight_accum.data<scalar_t>() : nullptr);
+                tree._weight_accum.numel() > 0 ?  tree._weight_accum.data<scalar_t>() : nullptr);
     });
     CUDA_CHECK_ERRORS;
     return result;
 }
 
-torch::Tensor _volume_render_image_cuda(
-    torch::Tensor data, torch::Tensor child, torch::Tensor extra_data,
-    torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w,
-    float fx, float fy, int width,
-    int height, float step_size,
-    float background_brightness, int format, int basis_dim, int ndc_width, int ndc_height,
-    float ndc_focal, bool fast, at::Tensor weight_accum) {
-    const size_t Q = size_t(width) * height;
+torch::Tensor volume_render_image(TreeSpec& tree, CameraSpec& cam, RenderOptions& opt) {
+    tree.check();
+    cam.check();
+    const size_t Q = size_t(cam.width) * cam.height;
 
-    const float sigma_thresh = fast ? 1e-2f : 0.f;
-    const float stop_thresh = fast ? 1e-2f : 0.f;
+    const float sigma_thresh = opt.fast ? 1e-2f : 0.f;
+    const float stop_thresh = opt.fast ? 1e-2f : 0.f;
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(format, basis_dim, data.size(4));
-    torch::Tensor result = torch::zeros({height, width, out_data_dim}, data.options());
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    torch::Tensor result = torch::zeros({cam.height, cam.width, out_data_dim},
+            tree.data.options());
 
-    AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
+    AT_DISPATCH_FLOATING_TYPES(tree.data.type(), __FUNCTION__, [&] {
             device::render_image_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
-                child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-                extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                step_size,
-                background_brightness,
-                format,
-                basis_dim,
+                tree.data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                tree.child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                cam.c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                opt.step_size,
+                opt.background_brightness,
+                opt.format,
+                opt.basis_dim,
                 sigma_thresh,
                 stop_thresh,
-                fx,
-                fy,
-                width,
-                height,
-                ndc_focal,
-                ndc_width,
-                ndc_height,
-                offset.data<scalar_t>(),
-                scaling.data<scalar_t>(),
+                cam.fx,
+                cam.fy,
+                cam.width,
+                cam.height,
+                opt.ndc_focal,
+                opt.ndc_width,
+                opt.ndc_height,
+                tree.offset.data<scalar_t>(),
+                tree.scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
-                weight_accum.numel() > 0 ?  weight_accum.data<scalar_t>() : nullptr);
+                tree._weight_accum.numel() > 0 ? tree._weight_accum.data<scalar_t>() : nullptr);
     });
     CUDA_CHECK_ERRORS;
     return result;
 }
 
-torch::Tensor _volume_render_backward_cuda(
-    torch::Tensor data, torch::Tensor child,
-    torch::Tensor extra_data, torch::Tensor grad_output,
-    torch::Tensor origins, torch::Tensor dirs, torch::Tensor vdirs,
-    torch::Tensor offset, torch::Tensor scaling, float step_size,
-    float background_brightness, int format, int basis_dim) {
-    const int Q = origins.size(0);
+torch::Tensor volume_render_backward(
+    TreeSpec& tree, RaySpec& rays,
+    RenderOptions& opt,
+    torch::Tensor grad_output) {
+    const int Q = rays.origins.size(0);
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(format, basis_dim, data.size(4));
-    torch::Tensor result = torch::zeros_like(data);
-    AT_DISPATCH_FLOATING_TYPES(origins.type(), __FUNCTION__, [&] {
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    torch::Tensor result = torch::zeros_like(tree.data);
+    AT_DISPATCH_FLOATING_TYPES(rays.origins.type(), __FUNCTION__, [&] {
             device::render_ray_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
-                child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-                extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                tree.data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                tree.child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                dirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                vdirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                step_size,
-                background_brightness,
-                format,
-                basis_dim,
-                offset.data<scalar_t>(),
-                scaling.data<scalar_t>(),
+                rays.origins.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                rays.dirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                rays.vdirs.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                opt.step_size,
+                opt.background_brightness,
+                opt.format,
+                opt.basis_dim,
+                tree.offset.data<scalar_t>(),
+                tree.scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
     return result;
 }
 
-torch::Tensor _volume_render_image_backward_cuda(
-    torch::Tensor data, torch::Tensor child,
-    torch::Tensor extra_data,
-    torch::Tensor grad_output,
-    torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w, float fx,
-    float fy, int width, int height, float step_size,
-    float background_brightness, int format, int basis_dim,
-    int ndc_width, int ndc_height, float ndc_focal) {
-    const size_t Q = size_t(width) * height;
+torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
+                                           RenderOptions& opt,
+                                           torch::Tensor grad_output) {
+    const size_t Q = size_t(cam.width) * cam.height;
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(format, basis_dim, data.size(4));
-    torch::Tensor result = torch::zeros_like(data);
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    torch::Tensor result = torch::zeros_like(tree.data);
 
-    AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
+    AT_DISPATCH_FLOATING_TYPES(tree.data.type(), __FUNCTION__, [&] {
             device::render_image_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
-                data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
-                child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
-                extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                tree.data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>(),
+                tree.child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>(),
+                tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                cam.c2w.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
-                step_size,
-                background_brightness,
-                format,
-                basis_dim,
-                fx,
-                fy,
-                width,
-                height,
-                ndc_focal,
-                ndc_width,
-                ndc_height,
-                offset.data<scalar_t>(),
-                scaling.data<scalar_t>(),
+                opt.step_size,
+                opt.background_brightness,
+                opt.format,
+                opt.basis_dim,
+                cam.fx,
+                cam.fy,
+                cam.width,
+                cam.height,
+                opt.ndc_focal,
+                opt.ndc_width,
+                opt.ndc_height,
+                tree.offset.data<scalar_t>(),
+                tree.scaling.data<scalar_t>(),
                 result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;

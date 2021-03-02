@@ -355,3 +355,39 @@ class LocalIndex:
     """
     def __init__(self, val):
         self.val = val
+
+class DataFormat:
+    RGBA = 0
+    SH = 1
+    SG = 2
+    ASG = 3
+    def __init__(self, txt):
+        nonalph_idx = [c.isalpha() for c in txt]
+        if False in nonalph_idx:
+            nonalph_idx = nonalph_idx.index(False)
+            self.basis_dim = int(txt[nonalph_idx:])
+            format_type = txt[:nonalph_idx]
+            if format_type == "SH":
+                self.format = DataFormat.SH
+            elif format_type == "SG":
+                self.format = DataFormat.SG
+            elif format_type == "ASG":
+                self.format = DataFormat.ASG
+            else:
+                self.format = DataFormat.RGBA
+        else:
+            self.format = DataFormat.RGBA
+            self.basis_dim = -1
+
+    def __repr__(self):
+        if self.format == DataFormat.SH:
+            r = "SH"
+        elif self.format == DataFormat.SG:
+            r = "SG"
+        elif self.format == DataFormat.ASG:
+            r = "ASG"
+        else:
+            r = "RGBA"
+        if self.basis_dim >= 0:
+            r += str(self.basis_dim)
+        return r

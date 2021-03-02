@@ -33,171 +33,66 @@ from torch import nn, autograd
 from collections import namedtuple
 from warnings import warn
 
-from svox.helpers import _get_c_extension, LocalIndex
+from svox.helpers import _get_c_extension, LocalIndex, DataFormat
 
-class DataFormat:
-    RGBA = 0
-    SH = 1
-    SG = 2
-    ASG = 3
-    def __init__(self, txt):
-        nonalph_idx = [c.isalpha() for c in txt]
-        if False in nonalph_idx:
-            nonalph_idx = nonalph_idx.index(False)
-            self.basis_dim = int(txt[nonalph_idx:])
-            format_type = txt[:nonalph_idx]
-            if format_type == "SH":
-                self.format = DataFormat.SH
-            elif format_type == "SG":
-                self.format = DataFormat.SG
-            elif format_type == "ASG":
-                self.format = DataFormat.ASG
-            else:
-                self.format = DataFormat.RGBA
-        else:
-            self.format = DataFormat.RGBA
-            self.basis_dim = -1
-
-    def __repr__(self):
-        if self.format == DataFormat.SH:
-            r = "SH"
-        elif self.format == DataFormat.SG:
-            r = "SG"
-        elif self.format == DataFormat.ASG:
-            r = "ASG"
-        else:
-            r = "RGBA"
-        if self.basis_dim >= 0:
-            r += str(self.basis_dim)
-        return r
+NDCConfig = namedtuple('NDCConfig', ["width", "height", "focal"])
+Rays = namedtuple('Rays', ["origins", "dirs", "viewdirs"])
 
 _C = _get_c_extension()
 
+def _ray_spec_from_rays(rays):
+    spec = _C.RaySpec()
+    spec.origins = rays.origins
+    spec.dirs = rays.dirs
+    spec.vdirs = rays.viewdirs
+    return spec
+
+def _make_camera_spec(c2w, width, height, fx, fy):
+    spec = _C.CameraSpec()
+    spec.c2w = c2w
+    spec.width = width
+    spec.height = height
+    spec.fx = fx
+    spec.fy = fy
+    return spec
+
 class _VolumeRenderFunction(autograd.Function):
     @staticmethod
-    def forward(ctx, data, child, extra_data,
-            origins, dirs, viewdirs, offset, invradius, weight_accum, opts):
-        if weight_accum is None:
-            weight_accum = torch.empty(0, device=data.device)
-        if extra_data is None:
-            extra_data = torch.empty((0, 0), device=data.device)
-        out = _C.volume_render(
-            data,
-            child,
-            extra_data,
-            origins,
-            dirs,
-            viewdirs,
-            offset,
-            invradius,
-            opts["step_size"],
-            opts["background_brightness"],
-            opts["format"],
-            opts["basis_dim"],
-            opts["fast"],
-            weight_accum,
-        )
-        ctx.save_for_backward(data, child, extra_data, origins, dirs,
-                viewdirs, offset, invradius)
-        ctx.opts = opts
+    def forward(ctx, data, tree, rays, opt):
+        out = _C.volume_render(tree, rays, opt)
+        ctx.tree = tree
+        ctx.rays = rays
+        ctx.opt = opt
         return out
 
     @staticmethod
     def backward(ctx, grad_out):
-        data, child, extra_data, origins, dirs, viewdirs, offset, invradius = \
-                ctx.saved_tensors
-        opts = ctx.opts
-
-        grad_out = grad_out.contiguous()
         if ctx.needs_input_grad[0]:
-            grad_data = _C.volume_render_backward(
-                data,
-                child,
-                extra_data,
-                grad_out,
-                origins,
-                dirs,
-                viewdirs,
-                offset,
-                invradius,
-                opts["step_size"],
-                opts["background_brightness"],
-                opts["format"],
-                opts["basis_dim"],
-            )
-        else:
-            grad_data = None
-
-        return grad_data, None, None, None, None, None, None, None, None, None
+            return _C.volume_render_backward(
+                ctx.tree, ctx.rays, ctx.opt, grad_out.contiguous()
+            ), None, None, None
+        return None, None, None, None
 
 class _VolumeRenderImageFunction(autograd.Function):
     @staticmethod
-    def forward(ctx, data, child, extra_data,
-                offset, invradius, c2w, weight_accum, opts):
-        if weight_accum is None:
-            weight_accum = torch.empty(0, device=data.device)
-        if extra_data is None:
-            extra_data = torch.empty((0, 0), device=data.device)
-        out = _C.volume_render_image(
-            data,
-            child,
-            extra_data,
-            offset,
-            invradius,
-            c2w,
-            opts["fx"],
-            opts["fy"],
-            opts["width"],
-            opts["height"],
-            opts["step_size"],
-            opts["background_brightness"],
-            opts["format"],
-            opts["basis_dim"],
-            opts.get("ndc_width", 0),
-            opts.get("ndc_height", 0),
-            opts.get("ndc_focal", 0.0),
-            opts["fast"],
-            weight_accum,
-        )
-        ctx.save_for_backward(data, child, extra_data, offset, invradius, c2w)
-        ctx.opts = opts
+    def forward(ctx, data, tree, cam, opt):
+        out = _C.volume_render_image(tree, cam, opt)
+        ctx.tree = tree
+        ctx.cam = cam
+        ctx.opt = opt
         return out
 
     @staticmethod
     def backward(ctx, grad_out):
-        data, child, extra_data, offset, invradius, c2w = ctx.saved_tensors
-        opts = ctx.opts
-
-        grad_out = grad_out.contiguous()
         if ctx.needs_input_grad[0]:
-            grad_data = _C.volume_render_image_backward(
-                data,
-                child,
-                extra_data,
-                grad_out,
-                offset,
-                invradius,
-                c2w,
-                opts["fx"],
-                opts["fy"],
-                opts["width"],
-                opts["height"],
-                opts["step_size"],
-                opts["background_brightness"],
-                opts["format"],
-                opts["basis_dim"],
-                opts.get("ndc_width", 0),
-                opts.get("ndc_height", 0),
-                opts.get("ndc_focal", 0.0),
-            )
-        else:
-            grad_data = None
-
-        return grad_data, None, None, None, None, None, None, None
+            return _C.volume_render_image_backward(
+                ctx.tree, ctx.cam, ctx.opt, grad_out.contiguous()
+            ), None, None, None
+        return None, None, None, None
 
 
 def convert_to_ndc(origins, directions, focal, w, h, near=1.0):
-    """Convert a set of rays to NDC coordinates."""
+    """Convert a set of rays to NDC coordinates. (only for grad check)"""
     # Shift ray origins to near plane
     t = -(near + origins[..., 2]) / directions[..., 2]
     origins = origins + t[..., None] * directions
@@ -217,9 +112,6 @@ def convert_to_ndc(origins, directions, focal, w, h, near=1.0):
     origins = torch.stack([o0, o1, o2], -1)
     directions = torch.stack([d0, d1, d2], -1)
     return origins, directions
-
-NDCConfig = namedtuple('NDCConfig', ["width", "height", "focal"])
-Rays = namedtuple('Rays', ["origins", "dirs", "viewdirs"])
 
 class VolumeRenderer(nn.Module):
     """
@@ -246,8 +138,8 @@ class VolumeRenderer(nn.Module):
         self.step_size = step_size
         self.background_brightness = background_brightness
         self.ndc_config = ndc
-        if tree.data_format is not None:
-            self.data_format = DataFormat(tree.data_format)
+        if isinstance(tree.data_format, DataFormat):
+            self.data_format = tree.data_format
         else:
             warn("Legacy N3Tree (pre 0.2.18) without data_format, auto-infering SH order")
             # Auto SH order
@@ -354,24 +246,11 @@ class VolumeRenderer(nn.Module):
             out_rgb += self.background_brightness * light_intensity[:, None]
             return out_rgb
         else:
-            opts = {
-                'step_size': self.step_size,
-                'background_brightness':self.background_brightness,
-                'format': self.data_format.format,
-                'basis_dim': self.data_format.basis_dim,
-                'fast': fast
-            }
             return _VolumeRenderFunction.apply(
                 self.tree.data,
-                self.tree.child,
-                self.tree.extra_data,
-                rays.origins,
-                rays.dirs,
-                rays.viewdirs,
-                self.tree.offset,
-                self.tree.invradius,
-                self.tree._weight_accum,
-                opts
+                self.tree._spec(),
+                _ray_spec_from_rays(rays),
+                self._get_options(fast)
             )
 
     def render_persp(self, c2w, width=800, height=800, fx=1111.111, fy=None,
@@ -425,30 +304,29 @@ class VolumeRenderer(nn.Module):
             rgb = self(rays, cuda=False, fast=fast)
             return rgb.reshape(height, width, -1)
         else:
-            opts = {
-                'fx': fx,
-                'fy': fy,
-                'width': width,
-                'height': height,
-                'step_size': self.step_size,
-                'background_brightness':self.background_brightness,
-                'format': self.data_format.format,
-                'basis_dim': self.data_format.basis_dim,
-                'fast': fast
-            }
-            if self.ndc_config is not None:
-                opts.update({
-                    'ndc_width': self.ndc_config.width,
-                    'ndc_height': self.ndc_config.height,
-                    'ndc_focal': self.ndc_config.focal,
-                })
             return _VolumeRenderImageFunction.apply(
                 self.tree.data,
-                self.tree.child,
-                self.tree.extra_data,
-                self.tree.offset,
-                self.tree.invradius,
-                c2w,
-                self.tree._weight_accum,
-                opts
+                self.tree._spec(),
+                _make_camera_spec(c2w, width, height, fx, fy),
+                self._get_options(fast)
             )
+
+    def _get_options(self, fast=False):
+        """
+        Make RenderOptions struct to send to C++
+        """
+        opts = _C.RenderOptions()
+        opts.step_size = self.step_size
+        opts.background_brightness = self.background_brightness
+        opts.fast = fast
+        
+        opts.format = self.data_format.format
+        opts.basis_dim = self.data_format.basis_dim
+
+        if self.ndc_config is not None:
+            opts.ndc_width = self.ndc_config.width
+            opts.ndc_height = self.ndc_config.height
+            opts.ndc_focal = self.ndc_config.focal
+        else:
+            opts.ndc_width = -1
+        return opts
