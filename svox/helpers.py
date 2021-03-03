@@ -233,31 +233,6 @@ class N3TreeView:
         """
         return arr[self.key]
 
-    # In-place modification helpers
-    def normal_(self, mean=0.0, std=1.0):
-        """
-        Set all values to random normal
-
-        :param mean: normal mean
-        :param std: normal std
-
-        """
-        self._check_ver()
-        self.tree.data.data[self.key] = torch.randn_like(
-                self.tree.data.data[self.key]) * std + mean
-
-    def uniform_(self, min=0.0, max=1.0):
-        """
-        Set all values to random uniform
-
-        :param min: interval min
-        :param max: interval max
-
-        """
-        self._check_ver()
-        self.tree.data.data[self.key] = torch.rand_like(
-                self.tree.data.data[self.key]) * (max - min) + min
-
     def __setitem__(self, key, value):
         """
         Warning: inefficient impl
@@ -291,7 +266,7 @@ class N3TreeView:
         self._check_ver()
         if self._points is not None:
             leaf_key = self.tree._maybe_lazy_alloc(self._points)
-            self.key = (leaf_key, self.key[1:]) if isinstance(self.key, tuple) else leaf_key
+            self.key = (leaf_key, *self.key[1:]) if isinstance(self.key, tuple) else leaf_key
             self._tree_ver = self.tree._ver  # Auto-synced indices
             self._points = None
 
@@ -308,7 +283,7 @@ def _redirect_funcs():
                    '__len__', 'clamp', 'clamp_max', 'clamp_min', 'relu', 'sigmoid',
                    'max', 'min', 'mean', 'sum', '__getitem__']
     redir_inplace_funcs = ['relu_', 'sigmoid_', 'clamp_',
-                           'clamp_min_', 'clamp_max_', 'sqrt_']
+                           'clamp_min_', 'clamp_max_', 'sqrt_', 'normal_', 'uniform_']
     def redirect_func(redir_func, grad=False, inplace=False):
         def redir_impl(self, *args, **kwargs):
             if inplace:

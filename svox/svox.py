@@ -463,9 +463,17 @@ class N3Tree(nn.Module):
     def max_depth(self):
         """
         Maximum tree depth - 1.
-        Note: slow
+        Note: need to look thru leaves
         """
         return torch.max(self.idepths).item()
+
+    @property
+    def n_freeable(self):
+        """
+        Number of data entries which can be freed using shrink_to_fit
+        Note: need to look thru leaves
+        """
+        return (self.back_link == -1).sum().item()
 
     def accumulate_weights(self):
         """
@@ -558,6 +566,12 @@ class N3Tree(nn.Module):
             tree.data = nn.Parameter(torch.from_numpy(
                     z["data"].astype(np.float32).reshape(-1, tree.data_dim)
                 ).to(map_location))
+            zero_data_mask = (tree.data == 0.0).all(dim=1) & (tree.back_link >= 0)
+            tree.child[tree._unpack_index(tree.back_link[zero_data_mask]).long(
+                ).unbind(-1)] = 0
+
+            tree.back_link[zero_data_mask] = -1
+            tree.back_link[0] = -2
             tree.compact = False
         else:
             tree.parent = torch.from_numpy(z["parent"]).to(map_location)
@@ -568,6 +582,29 @@ class N3Tree(nn.Module):
             tree.back_link = torch.from_numpy(z["back_link"]).to(map_location)
             tree.compact = bool(z["compact"].item())
         return tree
+
+    def shrink_to_fit(self):
+        """
+        Free all unused space.
+        """
+        free = self.back_link == -1
+        csum = torch.cumsum(free, dim=0)
+        if csum[-1] == 0:
+            return False
+        nonfree = ~free
+        del free
+
+        nonfree[0] = True
+        packed = self.back_link[nonfree]
+        leaf_sel = self._unpack_index(
+             self.back_link[nonfree]).long().unbind(-1)
+
+        self.child[leaf_sel] += csum[nonfree]
+        del leaf_sel
+        self.data = torch.nn.Parameter(self.data.data[nonfree])
+        self.back_link = self.back_link[nonfree]
+        self._invalidate()
+        return True
 
     # Magic
     def __repr__(self):
@@ -742,6 +779,14 @@ class N3Tree(nn.Module):
         self.data.data[inf_mask & (self.data.data > 0)] = inf_val
         self.data.data[inf_mask & (self.data.data < 0)] = -inf_val
 
+    def set_default(self, value):
+        """
+        Set default value for nodes with no data
+        """
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor(value, device=self.data.device, dtype=torch.float32)
+        self.data.data[0] = value.to(device=self.data.device)
+
     def _invalidate(self):
         self._ver += 1
         if self.on_invalidate is not None:
@@ -803,7 +848,7 @@ def _redirect_to_n3view():
                    'values', 'values_nograd', 'depths']
     redir_funcs = ['sample', 'sample_local', 'aux',
             'normal_', 'clamp_', 'uniform_', 'relu_', 'sigmoid_',
-            'clamp_', 'clamp_min_', 'clamp_max_', 'sqrt_']
+            'clamp_', 'clamp_min_', 'clamp_max_', 'sqrt_', 'normal_', 'uniform_']
     def redirect_func(redir_func):
         def redir_impl(self, *args, **kwargs):
             return getattr(self[:], redir_func)(*args, **kwargs)
