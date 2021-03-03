@@ -25,12 +25,13 @@ __device__ __inline__ void transform_coord(scalar_t* __restrict__ q,
 
 template <typename scalar_t>
 __device__ __inline__ scalar_t* query_single_from_root(
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         data,
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child,
     scalar_t* __restrict__ xyz_inout,
     scalar_t* __restrict__ cube_sz_out,
+    int32_t* __restrict__ data_id_out,
     int32_t* __restrict__ node_id_out) {
     const scalar_t N = child.size(1);
     clamp_coord<scalar_t>(xyz_inout);
@@ -50,9 +51,10 @@ __device__ __inline__ scalar_t* query_single_from_root(
         xyz_inout[2] -= w;
 
         const int32_t skip = child[node_id][u][v][w];
-        if (skip == 0) {
+        if (skip <= 0) {
+            *data_id_out = -skip;
             *node_id_out = node_id * N * N * N + u * N * N + v * N + w;
-            return &data[node_id][u][v][w][0];
+            return &data[-skip][0];
         }
         *cube_sz_out *= N;
         node_id += skip;

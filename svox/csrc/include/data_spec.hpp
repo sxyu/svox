@@ -90,4 +90,4 @@ struct RenderOptions {
     float stop_thresh;
 };
 
-using QueryResult = std::tuple<torch::Tensor, torch::Tensor>;
+using QueryResult = std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>;

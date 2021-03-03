@@ -29,8 +29,8 @@ import numpy as np
 class N3TreeView:
     def __init__(self, tree, key):
         self.tree = tree
+        self._points = None
         local = False
-        self.single_key = False
         if isinstance(key, LocalIndex):
             key = key.val
             local = True
@@ -38,30 +38,37 @@ class N3TreeView:
             # Handle tree[x, y, z[, c]]
             main_key = torch.tensor(key[:3], dtype=torch.float32,
                         device=tree.data.device).reshape(1, 3)
-            if len(key) > 3:
-                key = (main_key, *key[3:])
-            else:
-                key = main_key
-        leaf_key = key[0] if isinstance(key, tuple) else key
+            key = (main_key, *key[3:]) if len(key) > 3 else main_key
+
+        has_data_dim_index = isinstance(key, tuple)
+        leaf_key = key[0] if has_data_dim_index else key
         if torch.is_tensor(leaf_key) and leaf_key.ndim == 2 and leaf_key.shape[1] == 3:
             # Handle tree[P[, c]] where P is a (B, 3) matrix of 3D points
             if leaf_key.dtype != torch.float32:
                 leaf_key = leaf_key.float()
-            val, target = tree.forward(leaf_key, want_node_ids=True, world=not local)
-            self._packed_ids = target.clone()
-            leaf_node = (*tree._unpack_index(target).T,)
+            self._points = leaf_key
+            val, leaf_ids = tree.forward(leaf_key, want_data_ids=True, world=not local)
+            leaf_key = leaf_ids.long()
         else:
-            self._packed_ids = None
+            # Advance any indices by 1 to exclude 'null' element
             if isinstance(leaf_key, int):
-                leaf_key = torch.tensor([leaf_key], device=tree.data.device)
-                self.single_key = True
-            leaf_node = self.tree._all_leaves()
-            leaf_node = leaf_node.__getitem__(leaf_key).T
-        if isinstance(key, tuple):
-            self.key = (*leaf_node, *key[1:])
-        else:
-            self.key = (*leaf_node,)
-        self._value = None
+                if leaf_key <= -tree.data.size(0):
+                    raise IndexError()
+                leaf_key = torch.tensor(leaf_key + 1 if leaf_key >= 0 else leaf_key,
+                                        device=tree.data.device)
+            elif isinstance(leaf_key, torch.Tensor):
+                if leaf_key.dtype == torch.long:
+                    leaf_key += leaf_key >= 0
+                elif leaf_key.dtype == torch.bool:
+                    leaf_key = torch.cat(torch.zeros(1,
+                        dtype=torch.bool, device=tree.data.device), leaf_key)
+            elif isinstance(leaf_key, slice):
+                start = leaf_key.start + 1 if leaf_key.start is not None and \
+                                              leaf_key.start >= 0 else 1
+                stop = leaf_key.stop + 1 if leaf_key.stop is not None and \
+                                            leaf_key.stop >= 0 else None
+                leaf_key = slice(start, stop, leaf_key.step)
+        self.key = (leaf_key, *key[1:]) if has_data_dim_index else leaf_key
         self._tree_ver = tree._ver
 
     def __repr__(self):
@@ -81,18 +88,26 @@ class N3TreeView:
         return func(*new_args, **kwargs)
 
     def set(self, value):
-        self._check_ver()
         if isinstance(value, N3TreeView):
             value = value.values_nograd
+        self._maybe_lazy_alloc()
+        self._check_ver()
         self.tree.data.data[self.key] = value
 
-    def refine(self, repeats=1):
+    def refine(self, repeats=1, lazy=False):
         """
         Refine selected leaves using tree.refine
         """
         self._check_ver()
-        ret = self.tree.refine(repeats, sel=self._unique_node_key())
+        ret = self.tree.refine(repeats, sel=self._unique_node_key(), lazy=lazy)
         return ret
+
+    def alloc(self):
+        """
+        Force allocation, if applicable (only if tree.use_lazy and
+        the key consists of points)
+        """
+        self._maybe_lazy_alloc()
 
     @property
     def values(self):
@@ -102,8 +117,7 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        ret = self.tree.data[self.key]
-        return ret[0] if self.single_key else ret
+        return self.tree.data[self.key]
 
     @property
     def values_nograd(self):
@@ -113,8 +127,7 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        ret = self.tree.data.data[self.key]
-        return ret[0] if self.single_key else ret
+        return self.tree.data.data[self.key]
 
     @property
     def shape(self):
@@ -135,8 +148,7 @@ class N3TreeView:
 
         :return: (n_leaves) int32
         """
-        self._check_ver()
-        return self.tree.parent_depth[self.key[0], 1]
+        return self.tree.idepths[self._indexer()[:, 0]]
 
     @property
     def lengths(self):
@@ -147,7 +159,7 @@ class N3TreeView:
         :return: (n_leaves, 3) float
         """
         self._check_ver()
-        return (2.0 ** (-self.depths.float() - 1.0))[:, None] / self.tree.invradius
+        return (2.0 ** (-self.depths.float() - 1.0))[:, None] / self.tree.scaling
 
     @property
     def lengths_local(self):
@@ -170,9 +182,8 @@ class N3TreeView:
 
         :return: (n_leaves, 3) float
         """
-        self._check_ver()
         return (self.tree._calc_corners(self._indexer())
-                - self.tree.offset) / self.tree.invradius
+                - self.tree.offset) / self.tree.scaling
 
     @property
     def corners_local(self):
@@ -183,7 +194,6 @@ class N3TreeView:
 
         :return: (n_leaves, 3) float
         """
-        self._check_ver()
         return self.tree._calc_corners(self._indexer())
 
     def sample(self, n_samples):
@@ -192,7 +202,6 @@ class N3TreeView:
 
         :return: (n_leaves, n_samples, 3) float
         """
-        self._check_ver()
         corn = self.corners
         length = self.lengths
         if length.ndim == 1:
@@ -249,65 +258,42 @@ class N3TreeView:
         self.tree.data.data[self.key] = torch.rand_like(
                 self.tree.data.data[self.key]) * (max - min) + min
 
-    def clamp_(self, min=None, max=None):
-        """
-        Clamp.
-
-        :param min: clamp min value, None=disable
-        :param max: clamp max value, None=disable
-
-        """
-        self._check_ver()
-        self.tree.data.data[self.key] = self.tree.data.data[self.key].clamp(min, max)
-
-    def relu_(self):
-        """
-        Apply relu to all elements.
-        """
-        self._check_ver()
-        self.tree.data.data[self.key] = torch.relu(self.tree.data.data[self.key])
-
-    def sigmoid_(self):
-        """
-        Apply sigmoid to all elements.
-        """
-        self._check_ver()
-        self.tree.data.data[self.key] = torch.sigmoid(self.tree.data.data[self.key])
-
-    def nan_to_num_(self, inf_val=2e4):
-        """
-        Convert nans to 0.0 and infs to inf_val
-        """
-        data = self.tree.data.data[self.key]
-        data[torch.isnan(data)] = 0.0
-        inf_mask = torch.isinf(data)
-        data[inf_mask & (data > 0)] = inf_val
-        data[inf_mask & (data < 0)] = -inf_val
-        self.tree.data.data[self.key] = data
-
     def __setitem__(self, key, value):
         """
         Warning: inefficient impl
         """
-        val = self.values_nograd
-        val.__setitem__(key, value)
-        self.set(val)
+        self._maybe_lazy_alloc()
+        self._check_ver()
+        self.values_nograd.__setitem__(key, value)
 
     def _indexer(self):
-        return torch.stack(self.key[:4], dim=-1)
+        return self.tree._unpack_index(self._indexer_packed())
+
+    def _indexer_packed(self):
+        self._maybe_lazy_alloc()
+        self._check_ver()
+        leaf_key = self.key[0] if isinstance(self.key, tuple) else self.key
+        if isinstance(leaf_key, torch.Tensor) and leaf_key.ndim == 0:
+            leaf_key = leaf_key[None]
+        return self.tree.back_link[leaf_key].long()
 
     def _unique_node_key(self):
-        if self._packed_ids is None:
-            return self.key[:4]
-
-        uniq_ids = torch.unique(self._packed_ids)
-        return (*self.tree._unpack_index(uniq_ids).T,)
+        uniq_ids = torch.unique(self._indexer_packed())
+        return self.tree._unpack_index(uniq_ids).unbind(-1)
 
     def _check_ver(self):
         if self.tree._ver > self._tree_ver:
             self.key = self._packed_ids = None
             raise RuntimeError("N3TreeView has been invalidated because tree " +
                     "data layout has changed")
+
+    def _maybe_lazy_alloc(self):
+        self._check_ver()
+        if self._points is not None:
+            leaf_key = self.tree._maybe_lazy_alloc(self._points)
+            self.key = (leaf_key, self.key[1:]) if isinstance(self.key, tuple) else leaf_key
+            self._tree_ver = self.tree._ver  # Auto-synced indices
+            self._points = None
 
 # Redirect functions to Tensor
 def _redirect_funcs():
@@ -321,8 +307,13 @@ def _redirect_funcs():
                    '__rdiv__', '__abs__', '__pos__', '__neg__',
                    '__len__', 'clamp', 'clamp_max', 'clamp_min', 'relu', 'sigmoid',
                    'max', 'min', 'mean', 'sum', '__getitem__']
-    def redirect_func(redir_func, grad=False):
+    redir_inplace_funcs = ['relu_', 'sigmoid_', 'clamp_',
+                           'clamp_min_', 'clamp_max_', 'sqrt_']
+    def redirect_func(redir_func, grad=False, inplace=False):
         def redir_impl(self, *args, **kwargs):
+            if inplace:
+                self._maybe_lazy_alloc()
+            self._check_ver()
             return getattr(self.values if grad else self.values_nograd, redir_func)(
                     *args, **kwargs)
         setattr(N3TreeView, redir_func, redir_impl)
@@ -330,6 +321,8 @@ def _redirect_funcs():
         redirect_func(redir_func)
     for redir_func in redir_grad_funcs:
         redirect_func(redir_func, grad=True)
+    for redir_func in redir_inplace_funcs:
+        redirect_func(redir_func, inplace=True)
 _redirect_funcs()
 
 

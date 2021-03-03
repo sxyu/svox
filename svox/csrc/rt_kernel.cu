@@ -226,7 +226,7 @@ __device__ __inline__ void trace_ray(
     scalar_t tmin, tmax;
     scalar_t invdir[3];
     const int tree_N = tree.child.size(1);
-    const int data_dim = tree.data.size(4);
+    const int data_dim = tree.data.size(1);
     const int out_data_dim = out.size(0);
 
 #pragma unroll
@@ -258,9 +258,9 @@ __device__ __inline__ void trace_ray(
                 pos[j] = ray.origin[j] + t * ray.dir[j];
             }
 
-            int32_t node_id;
+            int32_t _node_id, data_id;
             scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data, tree.child,
-                        pos, &cube_sz, &node_id);
+                        pos, &cube_sz, &data_id, &_node_id);
 
             scalar_t att;
             scalar_t subcube_tmin, subcube_tmax;
@@ -290,7 +290,7 @@ __device__ __inline__ void trace_ray(
                 light_intensity *= att;
 
                 if (tree.weight_accum != nullptr) {
-                    tree.weight_accum[node_id] += weight;
+                    tree.weight_accum[data_id] += weight;
                 }
 
                 if (light_intensity <= opt.stop_thresh) {
@@ -315,14 +315,14 @@ __device__ __inline__ void trace_ray_backward(
         grad_output,
         SingleRaySpec<scalar_t> ray,
         RenderOptions& __restrict__ opt,
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         grad_data_out) {
     const scalar_t delta_scale = _get_delta_scale(tree.scaling, ray.dir);
 
     scalar_t tmin, tmax;
     scalar_t invdir[3];
     const int tree_N = tree.child.size(1);
-    const int data_dim = tree.data.size(4);
+    const int data_dim = tree.data.size(1);
     const int out_data_dim = grad_output.size(0);
 
 #pragma unroll
@@ -347,9 +347,9 @@ __device__ __inline__ void trace_ray_backward(
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
 
-                int32_t _node_id;
+                int32_t _node_id, _data_id;
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(
-                        tree.data, tree.child, pos, &cube_sz, &_node_id);
+                        tree.data, tree.child, pos, &cube_sz, &_data_id, &_node_id);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
@@ -408,9 +408,9 @@ __device__ __inline__ void trace_ray_backward(
             scalar_t light_intensity = 1.f, t = tmin, cube_sz;
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
-                int32_t _node_id;
+                int32_t _node_id, _data_id;
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data,
-                        tree.child, pos, &cube_sz, &_node_id);
+                        tree.child, pos, &cube_sz, &_data_id, &_node_id);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
@@ -481,7 +481,7 @@ __global__ void render_ray_backward_kernel(
         grad_output,
         PackedRaysSpec<scalar_t> rays,
         RenderOptions opt,
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         grad_data_out
         ) {
     CUDA_GET_THREAD_ID(tid, rays.origins.size(0));
@@ -552,7 +552,6 @@ __global__ void render_image_kernel(
     maybe_world2ndc(opt, dir, origin);
 
     transform_coord<scalar_t>(origin, tree.offset, tree.scaling);
-    const scalar_t delta_scale = _get_delta_scale(tree.scaling, dir);
     trace_ray<scalar_t>(
         tree,
         SingleRaySpec<scalar_t>{origin, dir, vdir},
@@ -567,7 +566,7 @@ __global__ void render_image_backward_kernel(
         grad_output,
     PackedCameraSpec<scalar_t> cam,
     RenderOptions opt,
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         grad_data_out) {
     CUDA_GET_THREAD_ID(tid, cam.width * cam.height);
     int iy = tid / cam.width, ix = tid % cam.width;
@@ -607,7 +606,7 @@ torch::Tensor volume_render(TreeSpec& tree, RaysSpec& rays, RenderOptions& opt) 
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(1));
     torch::Tensor result = torch::zeros({Q, out_data_dim}, rays.origins.options());
     AT_DISPATCH_FLOATING_TYPES(rays.origins.type(), __FUNCTION__, [&] {
             device::render_ray_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
@@ -626,7 +625,7 @@ torch::Tensor volume_render_image(TreeSpec& tree, CameraSpec& cam, RenderOptions
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(1));
     torch::Tensor result = torch::zeros({cam.height, cam.width, out_data_dim},
             tree.data.options());
 
@@ -651,7 +650,7 @@ torch::Tensor volume_render_backward(
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(1));
     torch::Tensor result = torch::zeros_like(tree.data);
     AT_DISPATCH_FLOATING_TYPES(rays.origins.type(), __FUNCTION__, [&] {
             device::render_ray_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
@@ -659,7 +658,7 @@ torch::Tensor volume_render_backward(
                 grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 rays,
                 opt,
-                result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
+                result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
     return result;
@@ -676,7 +675,7 @@ torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(1));
     torch::Tensor result = torch::zeros_like(tree.data);
 
     AT_DISPATCH_FLOATING_TYPES(tree.data.type(), __FUNCTION__, [&] {
@@ -685,7 +684,7 @@ torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
                 grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
                 cam,
                 opt,
-                result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
+                result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
     return result;
