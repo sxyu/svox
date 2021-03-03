@@ -602,6 +602,7 @@ __host__ int get_out_data_dim(int format, int basis_dim, int in_data_dim) {
 torch::Tensor volume_render(TreeSpec& tree, RaysSpec& rays, RenderOptions& opt) {
     tree.check();
     rays.check();
+    DEVICE_GUARD(tree.data);
     const auto Q = rays.origins.size(0);
 
     auto_cuda_threads();
@@ -620,6 +621,7 @@ torch::Tensor volume_render(TreeSpec& tree, RaysSpec& rays, RenderOptions& opt) 
 torch::Tensor volume_render_image(TreeSpec& tree, CameraSpec& cam, RenderOptions& opt) {
     tree.check();
     cam.check();
+    DEVICE_GUARD(tree.data);
     const size_t Q = size_t(cam.width) * cam.height;
 
     auto_cuda_threads();
@@ -641,6 +643,10 @@ torch::Tensor volume_render_backward(
     TreeSpec& tree, RaysSpec& rays,
     RenderOptions& opt,
     torch::Tensor grad_output) {
+    tree.check();
+    rays.check();
+    DEVICE_GUARD(tree.data);
+
     const int Q = rays.origins.size(0);
 
     auto_cuda_threads();
@@ -662,6 +668,10 @@ torch::Tensor volume_render_backward(
 torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
                                            RenderOptions& opt,
                                            torch::Tensor grad_output) {
+    tree.check();
+    cam.check();
+    DEVICE_GUARD(tree.data);
+
     const size_t Q = size_t(cam.width) * cam.height;
 
     auto_cuda_threads();
