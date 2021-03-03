@@ -22,7 +22,7 @@ enum DataFormat {
     FORMAT_ASG,
 };
 
-struct RaySpec {
+struct RaysSpec {
     torch::Tensor origins;
     torch::Tensor dirs;
     torch::Tensor vdirs;
@@ -48,7 +48,7 @@ struct TreeSpec {
     inline void check() {
         CHECK_INPUT(data);
         CHECK_INPUT(child);
-        if (extra_data.numel())  {
+        if (extra_data.numel()) {
             CHECK_INPUT(extra_data);
         }
         CHECK_INPUT(offset);
@@ -74,10 +74,10 @@ struct CameraSpec {
     }
 };
 
+// CUDA-ready
 struct RenderOptions {
     float step_size;
     float background_brightness;
-    bool fast;
 
     int format;
     int basis_dim;
@@ -85,6 +85,9 @@ struct RenderOptions {
     int ndc_width;
     int ndc_height;
     float ndc_focal;
+
+    float sigma_thresh;
+    float stop_thresh;
 };
 
 using QueryResult = std::tuple<torch::Tensor, torch::Tensor>;

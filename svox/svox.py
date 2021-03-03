@@ -695,10 +695,10 @@ class N3Tree(nn.Module):
 
     # Magic
     def __repr__(self):
-        return ("svox.N3Tree(N={}, data_dim={}, depth_limit={};" +
-                " capacity:{}/{})").format(
-                    self.N, self.data_dim, self.depth_limit,
-                    self.n_internal - self._n_free.item(), self.capacity)
+        return (f"svox.N3Tree(N={self.N}, data_dim={self.data_dim}, " +
+                f"depth_limit={self.depth_limit}, " +
+                f"capacity:{self.n_internal - self._n_free.item()}/{self.capacity}, " +
+                f"data_format:{self.data_format or 'RGBA'})");
 
     def __getitem__(self, key):
         """

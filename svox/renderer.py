@@ -40,8 +40,8 @@ Rays = namedtuple('Rays', ["origins", "dirs", "viewdirs"])
 
 _C = _get_c_extension()
 
-def _ray_spec_from_rays(rays):
-    spec = _C.RaySpec()
+def _rays_spec_from_rays(rays):
+    spec = _C.RaysSpec()
     spec.origins = rays.origins
     spec.dirs = rays.dirs
     spec.vdirs = rays.viewdirs
@@ -249,7 +249,7 @@ class VolumeRenderer(nn.Module):
             return _VolumeRenderFunction.apply(
                 self.tree.data,
                 self.tree._spec(),
-                _ray_spec_from_rays(rays),
+                _rays_spec_from_rays(rays),
                 self._get_options(fast)
             )
 
@@ -318,7 +318,6 @@ class VolumeRenderer(nn.Module):
         opts = _C.RenderOptions()
         opts.step_size = self.step_size
         opts.background_brightness = self.background_brightness
-        opts.fast = fast
         
         opts.format = self.data_format.format
         opts.basis_dim = self.data_format.basis_dim
@@ -329,4 +328,16 @@ class VolumeRenderer(nn.Module):
             opts.ndc_focal = self.ndc_config.focal
         else:
             opts.ndc_width = -1
+
+        if fast:
+            opts.sigma_thresh = 1e-2
+            opts.stop_thresh = 1e-2
+        else:
+            opts.sigma_thresh = 0.0
+            opts.stop_thresh = 0.0
+        # Override
+        if hasattr(self, "sigma_thresh"):
+            opts.sigma_thresh = self.sigma_thresh
+        if hasattr(self, "stop_thresh"):
+            opts.stop_thresh = self.stop_thresh
         return opts

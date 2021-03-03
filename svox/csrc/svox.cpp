@@ -29,7 +29,7 @@
 #include <torch/extension.h>
 #include <cstdint>
 
-#include "data_spec.cuh"
+#include "data_spec.hpp"
 
 namespace py = pybind11;
 using torch::Tensor;
@@ -38,18 +38,18 @@ QueryResult query_vertical(TreeSpec&, Tensor);
 Tensor query_vertical_backward(TreeSpec&, Tensor, Tensor);
 void assign_vertical(TreeSpec&, Tensor, Tensor);
 
-Tensor volume_render(TreeSpec&, RaySpec&, RenderOptions&);
+Tensor volume_render(TreeSpec&, RaysSpec&, RenderOptions&);
 Tensor volume_render_image(TreeSpec&, CameraSpec&, RenderOptions&);
-Tensor volume_render_backward(TreeSpec&, RaySpec&, RenderOptions&, Tensor);
+Tensor volume_render_backward(TreeSpec&, RaysSpec&, RenderOptions&, Tensor);
 Tensor volume_render_image_backward(TreeSpec&, CameraSpec&, RenderOptions&,
                                     Tensor);
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    py::class_<RaySpec>(m, "RaySpec")
+    py::class_<RaysSpec>(m, "RaysSpec")
         .def(py::init<>())
-        .def_readwrite("origins", &RaySpec::origins)
-        .def_readwrite("dirs", &RaySpec::dirs)
-        .def_readwrite("vdirs", &RaySpec::vdirs);
+        .def_readwrite("origins", &RaysSpec::origins)
+        .def_readwrite("dirs", &RaysSpec::dirs)
+        .def_readwrite("vdirs", &RaysSpec::vdirs);
 
     py::class_<TreeSpec>(m, "TreeSpec")
         .def(py::init<>())
@@ -73,11 +73,12 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("step_size", &RenderOptions::step_size)
         .def_readwrite("background_brightness",
                        &RenderOptions::background_brightness)
-        .def_readwrite("fast", &RenderOptions::fast)
         .def_readwrite("ndc_width", &RenderOptions::ndc_width)
         .def_readwrite("ndc_height", &RenderOptions::ndc_height)
         .def_readwrite("format", &RenderOptions::format)
-        .def_readwrite("basis_dim", &RenderOptions::basis_dim);
+        .def_readwrite("basis_dim", &RenderOptions::basis_dim)
+        .def_readwrite("sigma_thresh", &RenderOptions::sigma_thresh)
+        .def_readwrite("stop_thresh", &RenderOptions::stop_thresh);
 
     m.def("query_vertical", &query_vertical);
     m.def("query_vertical_backward", &query_vertical_backward);
