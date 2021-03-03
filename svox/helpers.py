@@ -60,8 +60,8 @@ class N3TreeView:
                 if leaf_key.dtype == torch.long:
                     leaf_key += leaf_key >= 0
                 elif leaf_key.dtype == torch.bool:
-                    leaf_key = torch.cat(torch.zeros(1,
-                        dtype=torch.bool, device=tree.data.device), leaf_key)
+                    leaf_key = torch.cat((torch.zeros(1,
+                        dtype=torch.bool, device=tree.data.device), leaf_key))
             elif isinstance(leaf_key, slice):
                 start = leaf_key.start + 1 if leaf_key.start is not None and \
                                               leaf_key.start >= 0 else 1
@@ -232,6 +232,16 @@ class N3TreeView:
         using this view
         """
         return arr[self.key]
+
+    def delete(self):
+        """
+        Delete the data for the selected elaves
+        """
+        self._ver = -1
+        leaf_key = self.key[0] if isinstance(self.key, tuple) else self.key
+        self.tree.child[self.tree._unpack_index(
+            self.tree.back_link[leaf_key]).long().unbind(-1)] = 0
+        self.tree.back_link[leaf_key] = -1
 
     def __setitem__(self, key, value):
         """

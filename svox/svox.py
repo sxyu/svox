@@ -142,7 +142,6 @@ class N3Tree(nn.Module):
         self._ver = 0
         self._lock_tree_data = False
         self._weight_accum = None
-        self.compact = False
 
         self.refine(repeats=init_refine)
 
@@ -321,7 +320,6 @@ class N3Tree(nn.Module):
         t2.parent = self.parent.clone()
         t2.idepths = self.idepths.clone()
         t2.back_link = self.back_link.clone()
-        t2.compact = self.compact
         if data_sel is None:
             t2.data.data = self.data.data.clone()
         else:
@@ -490,27 +488,28 @@ class N3Tree(nn.Module):
         return WeightAccumulator(self)
 
     # Persistence
-    def save(self, path, compress=False):
+    def save(self, path, compress=False, strip=False):
         """
         Save to from npz file
 
         :param path: npz path
         :param compress: whether to compress the npz; may be slow
+        :param strip: whether to only save attributes needed for rendering
 
         """
         data = {
-            "version": 2,
-            "compact": self.compact,
-            "data_dim" : self.data_dim,
             "child" : self.child.cpu(),
-            "parent" : self.parent.cpu(),
-            "depths" : self.idepths.cpu(),
             "scaling" : self.scaling.cpu(),
             "offset" : self.offset.cpu(),
-            "depth_limit": self.depth_limit,
-            "back_link": self.back_link.cpu(),
             "data": self.data.data.cpu().numpy().astype(np.float16)
         }
+        if not strip:
+            data.update({
+                "parent" : self.parent.cpu(),
+                "depths" : self.idepths.cpu(),
+                "back_link": self.back_link.cpu(),
+                "depth_limit": self.depth_limit,
+            })
         if self.data_format is not None:
             data["data_format"] = repr(self.data_format)
         if self.extra_data is not None:
@@ -532,7 +531,6 @@ class N3Tree(nn.Module):
         tree = cls(map_location=map_location)
         z = np.load(path)
 
-        tree.data_dim = int(z["data_dim"])
         tree.child = torch.from_numpy(z["child"]).to(map_location)
         tree.N = tree.child.shape[-1]
         tree.data_format = DataFormat(z['data_format'].item()) if \
@@ -563,24 +561,24 @@ class N3Tree(nn.Module):
             ileaf_indices = leaf_indices.int()
             tree.child[leaves.unbind(-1)] = -ileaf_indices
             tree.back_link[leaf_indices] = ileaf_indices
-            tree.data = nn.Parameter(torch.from_numpy(
-                    z["data"].astype(np.float32).reshape(-1, tree.data_dim)
-                ).to(map_location))
+            tmp_data = torch.from_numpy(z["data"].astype(np.float32))
+            tree.data = nn.Parameter(tmp_data.reshape(
+                -1, tmp_data.shape[-1]).to(map_location))
             zero_data_mask = (tree.data == 0.0).all(dim=1) & (tree.back_link >= 0)
             tree.child[tree._unpack_index(tree.back_link[zero_data_mask]).long(
                 ).unbind(-1)] = 0
 
             tree.back_link[zero_data_mask] = -1
             tree.back_link[0] = -2
-            tree.compact = False
         else:
             tree.parent = torch.from_numpy(z["parent"]).to(map_location)
             tree.idepths = torch.from_numpy(z["depths"]).to(map_location)
             tree.scaling = torch.from_numpy(z["scaling"].astype(
                                 np.float32)).to(map_location)
-            tree.data.data = torch.from_numpy(z["data"].astype(np.float32)).to(map_location)
+            tree.data = nn.Parameter(torch.from_numpy(
+                z["data"].astype(np.float32)).to(map_location))
             tree.back_link = torch.from_numpy(z["back_link"]).to(map_location)
-            tree.compact = bool(z["compact"].item())
+        tree.data_dim = tree.data.data.shape[-1]
         return tree
 
     def shrink_to_fit(self):
