@@ -130,7 +130,7 @@ class N3Tree(nn.Module):
         self.register_buffer("offset", 0.5 * (1.0 - center / radius))
 
         self.depth_limit = depth_limit
-        self.data_format = DataFormat(data_format) if data_format is not None else None
+        self.data_format = DataFormat(data_format or "")
         self.on_invalidate = on_invalidate
 
         if extra_data is not None:
@@ -359,7 +359,7 @@ class N3Tree(nn.Module):
             resized = False
             if sel is None:
                 # Default all leaves
-                sel = (self.child <= 0).nonzero(as_tuple=False).unbind(-1)
+                sel = (self.child <= 0).nonzero(as_tuple=True)
 
             for repeat_id in range(repeats):
                 filled = self.n_internal
@@ -510,8 +510,7 @@ class N3Tree(nn.Module):
                 "back_link": self.back_link.cpu(),
                 "depth_limit": self.depth_limit,
             })
-        if self.data_format is not None:
-            data["data_format"] = repr(self.data_format)
+        data["data_format"] = repr(self.data_format)
         if self.extra_data is not None:
             data["extra_data"] = self.extra_data.cpu()
         if compress:
@@ -533,12 +532,10 @@ class N3Tree(nn.Module):
 
         tree.child = torch.from_numpy(z["child"]).to(map_location)
         tree.N = tree.child.shape[-1]
-        tree.data_format = DataFormat(z['data_format'].item()) if \
-                'data_format' in z.files else None
         tree.extra_data = torch.from_numpy(z['extra_data']).to(map_location) if \
                           'extra_data' in z.files else None
         tree.offset = torch.from_numpy(z["offset"].astype(np.float32)).to(map_location)
-        tree.depth_limit = int(z["depth_limit"])
+        tree.depth_limit = int(z.get("depth_limit", 100))
 
         if "parent_depth" in z.files:
             warn("Converting legacy data buffer format (pre 0.3.0); " +
@@ -571,14 +568,29 @@ class N3Tree(nn.Module):
             tree.back_link[zero_data_mask] = -1
             tree.back_link[0] = -2
         else:
-            tree.parent = torch.from_numpy(z["parent"]).to(map_location)
-            tree.idepths = torch.from_numpy(z["depths"]).to(map_location)
+            if 'parent' in z.files:
+                tree.parent = torch.from_numpy(z["parent"]).to(map_location)
+            else:
+                warn("Stripped N3Tree, only querying/assignment/rendering supported")
+            if 'depths' in z.files:
+                tree.idepths = torch.from_numpy(z["depths"]).to(map_location)
             tree.scaling = torch.from_numpy(z["scaling"].astype(
                                 np.float32)).to(map_location)
             tree.data = nn.Parameter(torch.from_numpy(
                 z["data"].astype(np.float32)).to(map_location))
-            tree.back_link = torch.from_numpy(z["back_link"]).to(map_location)
+            if 'back_link' in z.files:
+                tree.back_link = torch.from_numpy(z["back_link"]).to(map_location)
         tree.data_dim = tree.data.data.shape[-1]
+        tree.data_format = DataFormat(z['data_format'].item()) if \
+                'data_format' in z.files else None
+        if tree.data_format is None:
+            warn("Legacy N3Tree (pre 0.2.18) without data_format, auto-infering SH order")
+            # Auto SH order
+            ddim = tree.data_dim
+            if ddim == 4:
+                tree.data_format = DataFormat("")
+            else:
+                tree.data_format = DataFormat(f"SH{(ddim - 1) // 3}")
         return tree
 
     def shrink_to_fit(self):
@@ -603,6 +615,22 @@ class N3Tree(nn.Module):
         self.back_link = self.back_link[nonfree]
         self._invalidate()
         return True
+
+    def quantize_median_cut(self, order):
+        assert _C is not None  # Need C extension
+        # Get rid of bogus elements
+        self.shrink_to_fit()
+        device = self.data.device
+        # Currently implemented on CPU
+        colors, color_map = _C.quantize_median_cut(self.data.data[1:].cpu(), order)
+
+        child = self.child.cpu()
+        leaf_sel = (child < 0).nonzero(as_tuple=True)
+        child[leaf_sel] = -color_map[-child[leaf_sel].long() - 1] + 1
+
+        self.data = nn.Parameter(colors.to(device=device))
+        self.child = child.to(device=device)
+        self._invalidate()
 
     # Magic
     def __repr__(self):

@@ -14,6 +14,7 @@ INSTALL_REQUIREMENTS = []
 ext_modules = [
     CUDAExtension('svox.csrc', [
         'svox/csrc/svox.cpp',
+        'svox/csrc/quantizer.cpp',
         'svox/csrc/svox_kernel.cu',
         'svox/csrc/rt_kernel.cu',
     ], include_dirs=[osp.join(ROOT_DIR, "svox", "csrc", "include")],

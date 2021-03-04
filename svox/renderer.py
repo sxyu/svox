@@ -138,16 +138,6 @@ class VolumeRenderer(nn.Module):
         self.step_size = step_size
         self.background_brightness = background_brightness
         self.ndc_config = ndc
-        if isinstance(tree.data_format, DataFormat):
-            self.data_format = tree.data_format
-        else:
-            warn("Legacy N3Tree (pre 0.2.18) without data_format, auto-infering SH order")
-            # Auto SH order
-            ddim = tree.data_dim
-            if ddim == 4:
-                self.data_format = DataFormat("")
-            else:
-                self.data_format = DataFormat(f"SH{(ddim - 1) // 3}")
         self.tree._weight_accum = None
 
     def forward(self, rays : Rays, cuda=True, fast=False):
@@ -197,8 +187,8 @@ class VolumeRenderer(nn.Module):
             dirs /= torch.norm(dirs, dim=-1, keepdim=True)
 
             sh_mult = None
-            if self.data_format.format != DataFormat.RGBA:
-                sh_mult = maybe_eval_basis(self.data_format.basis_dim, viewdirs)[:, None]
+            if self.tree.data_format.format != DataFormat.RGBA:
+                sh_mult = maybe_eval_basis(self.tree.data_format.basis_dim, viewdirs)[:, None]
 
             invdirs = 1.0 / (dirs + 1e-9)
             t, tmax = dda_unit(origins, invdirs)
@@ -221,9 +211,9 @@ class VolumeRenderer(nn.Module):
                 att = torch.exp(- delta_t * torch.relu(rgba[..., -1]) * delta_scale)
                 weight = light_intensity[good_indices] * (1.0 - att)
                 rgb = rgba[:, :-1]
-                if self.data_format.format != DataFormat.RGBA:
+                if self.tree.data_format.format != DataFormat.RGBA:
                     # [B', 3, n_sh_coeffs]
-                    rgb_sh = rgb.reshape(-1, 3, self.data_format.basis_dim)
+                    rgb_sh = rgb.reshape(-1, 3, self.tree.data_format.basis_dim)
                     rgb = torch.sigmoid(torch.sum(sh_mult * rgb_sh, dim=-1))   # [B', 3]
                 else:
                     rgb = torch.sigmoid(rgb)
@@ -318,9 +308,9 @@ class VolumeRenderer(nn.Module):
         opts = _C.RenderOptions()
         opts.step_size = self.step_size
         opts.background_brightness = self.background_brightness
-        
-        opts.format = self.data_format.format
-        opts.basis_dim = self.data_format.basis_dim
+
+        opts.format = self.tree.data_format.format
+        opts.basis_dim = self.tree.data_format.basis_dim
 
         if self.ndc_config is not None:
             opts.ndc_width = self.ndc_config.width
