@@ -80,6 +80,12 @@ torch::Tensor _volume_render_image_backward_cuda(
     float step_size, float background_brightness, int format, int basis_dim,
     int ndc_width, int ndc_height, float ndc_focal);
 
+std::vector<torch::Tensor> _grid_weight_render_cuda(
+    torch::Tensor data, 
+    torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w, float fx,
+    float fy, int width, int height, float step_size, int ndc_width,
+    int ndc_height, float ndc_focal, bool fast);
+
 /**
  * @param data (M, N, N, N, K)
  * @param child (M, N, N, N)
@@ -176,6 +182,24 @@ torch::Tensor volume_render(torch::Tensor data, torch::Tensor child,
                                weight_accum);
 }
 
+std::vector<torch::Tensor> grid_weight_render(
+    torch::Tensor data, 
+    torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w, float fx,
+    float fy, int width, int height, float step_size, int ndc_width,
+    int ndc_height, float ndc_focal, bool fast) {
+    CHECK_INPUT(data);
+    CHECK_INPUT(c2w);
+    CHECK_INPUT(scaling);
+    TORCH_CHECK(data.ndimension() == 3);
+    TORCH_CHECK(c2w.ndimension() == 2);
+    TORCH_CHECK(c2w.size(1) == 4);
+    const at::cuda::OptionalCUDAGuard device_guard(device_of(data));
+    return _grid_weight_render_cuda(
+        data, offset, scaling, c2w, fx, fy, width, height,
+        step_size, ndc_width,
+        ndc_height, ndc_focal, fast);
+}
+
 torch::Tensor volume_render_image(
     torch::Tensor data, torch::Tensor child, torch::Tensor extra_data,
     torch::Tensor offset, torch::Tensor scaling, torch::Tensor c2w, float fx,
@@ -252,4 +276,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("volume_render_image", &volume_render_image);
     m.def("volume_render_backward", &volume_render_backward);
     m.def("volume_render_image_backward", &volume_render_image_backward);
+
+    m.def("grid_weight_render", &grid_weight_render);
 }

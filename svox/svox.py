@@ -127,7 +127,8 @@ class N3Tree(nn.Module):
         if extra_data is not None:
             assert isinstance(extra_data, torch.Tensor)
             self.register_buffer("extra_data", extra_data.to(device=map_location))
-
+        else:
+            self.extra_data = None
         self._ver = 0
         self._invalidate()
         self._lock_tree_structure = False
@@ -750,7 +751,7 @@ class N3Tree(nn.Module):
             good_mask = curr[:, 0] != 0
             if not good_mask.any():
                 break
-            mask[mask] = good_mask
+            mask[mask.clone()] = good_mask
 
             curr = self._unpack_index(self.parent_depth[curr[good_mask, 0], 0].long())
 
