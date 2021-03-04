@@ -318,6 +318,7 @@ __device__ __inline__ void trace_ray_backward(
     torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
         grad_data_out) {
     const scalar_t delta_scale = _get_delta_scale(tree.scaling, ray.dir);
+    // FIXME backprop to SG coeffs
 
     scalar_t tmin, tmax;
     scalar_t invdir[3];

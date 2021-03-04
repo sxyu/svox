@@ -106,10 +106,10 @@ QueryResult query_vertical(TreeSpec& tree, torch::Tensor indices) {
     check_indices(indices);
     DEVICE_GUARD(indices);
 
-    const auto Q = indices.size(0), K = tree.data.size(4);
+    const int Q = indices.size(0);
 
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
-    torch::Tensor values = torch::empty({Q, K}, indices.options());
+    torch::Tensor values = torch::empty({Q, tree.data_dim}, indices.options());
     torch::Tensor node_ids = torch::empty({Q}, tree.child.options());
     AT_DISPATCH_FLOATING_TYPES(indices.type(), __FUNCTION__, [&] {
         device::query_single_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
@@ -144,10 +144,12 @@ torch::Tensor query_vertical_backward(
     tree.check();
     DEVICE_GUARD(indices);
     const auto Q = indices.size(0), N = tree.child.size(1),
-               K = grad_output.size(1), M = tree.child.size(0);
+               M = tree.child.size(0);
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
 
-    torch::Tensor grad_data = torch::zeros({M, N, N, N, K}, grad_output.options());
+    // FIXME gradient with quantized colors (library/codebook)
+    torch::Tensor grad_data = torch::zeros({M, N, N, N, tree.data_dim},
+            grad_output.options());
 
     AT_DISPATCH_FLOATING_TYPES(indices.type(), __FUNCTION__, [&] {
         device::query_single_kernel_backward<scalar_t><<<blocks, CUDA_N_THREADS>>>(
