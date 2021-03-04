@@ -822,7 +822,7 @@ class N3Tree(nn.Module):
         tree_spec.offset = self.offset if world else torch.tensor(
                   [0.0, 0.0, 0.0], device=self.data.device)
         tree_spec.scaling = self.invradius if world else torch.tensor(
-                  [1.0, 1.1, 0.0], device=self.data.device)
+                  [1.0, 1.0, 1.0], device=self.data.device)
         if hasattr(self, '_weight_accum'):
             tree_spec._weight_accum = self._weight_accum if \
                     self._weight_accum is not None else torch.empty(

@@ -75,6 +75,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
                        &RenderOptions::background_brightness)
         .def_readwrite("ndc_width", &RenderOptions::ndc_width)
         .def_readwrite("ndc_height", &RenderOptions::ndc_height)
+        .def_readwrite("ndc_focal", &RenderOptions::ndc_focal)
         .def_readwrite("format", &RenderOptions::format)
         .def_readwrite("basis_dim", &RenderOptions::basis_dim)
         .def_readwrite("sigma_thresh", &RenderOptions::sigma_thresh)
