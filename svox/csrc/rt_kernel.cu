@@ -259,8 +259,8 @@ __device__ __inline__ void trace_ray(
             }
 
             int32_t node_id;
-            scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data, tree.child,
-                        pos, &cube_sz, &node_id);
+            TreeLeaf<scalar_t> leaf = query_single_from_root<scalar_t>(
+                    tree.data, tree, pos, &cube_sz, &node_id);
 
             scalar_t att;
             scalar_t subcube_tmin, subcube_tmax;
@@ -268,7 +268,7 @@ __device__ __inline__ void trace_ray(
 
             const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
             const scalar_t delta_t = t_subcube + opt.step_size;
-            const scalar_t sigma = tree_val[data_dim - 1];
+            const scalar_t sigma = *leaf.sigma;
             if (sigma > opt.sigma_thresh) {
                 att = expf(-delta_t * delta_scale * sigma);
                 const scalar_t weight = light_intensity * (1.f - att);
@@ -278,13 +278,13 @@ __device__ __inline__ void trace_ray(
                         int off = t * opt.basis_dim;
                         scalar_t tmp = 0.0;
                         for (int i = 0; i < opt.basis_dim; ++i) {
-                            tmp += basis_fn[i] * tree_val[off + i];
+                            tmp += basis_fn[i] * leaf.rgb[off + i];
                         }
                         out[t] += weight / (1.0 + expf(-tmp));
                     }
                 } else {
                     for (int j = 0; j < out_data_dim; ++j) {
-                        out[j] += weight / (1.0 + expf(-tree_val[j]));
+                        out[j] += weight / (1.0 + expf(-leaf.rgb[j]));
                     }
                 }
                 light_intensity *= att;
@@ -348,10 +348,11 @@ __device__ __inline__ void trace_ray_backward(
                 for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
 
                 int32_t _node_id;
-                const scalar_t* tree_val = query_single_from_root<scalar_t>(
-                        tree.data, tree.child, pos, &cube_sz, &_node_id);
+                // FIXME support quantized gradient to codebook
+                TreeLeaf<scalar_t> leaf = query_single_from_root<scalar_t>(
+                        tree.data, tree, pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
-                const int curr_leaf_offset = tree_val - tree.data.data();
+                const int curr_leaf_offset = leaf.rgb - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
 
                 scalar_t att;
@@ -360,7 +361,7 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + opt.step_size;
-                const scalar_t sigma = tree_val[data_dim - 1];
+                const scalar_t sigma = *leaf.sigma;
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -371,7 +372,7 @@ __device__ __inline__ void trace_ray_backward(
                             int off = t * opt.basis_dim;
                             scalar_t tmp = 0.0;
                             for (int i = 0; i < opt.basis_dim; ++i) {
-                                tmp += basis_fn[i] * tree_val[off + i];
+                                tmp += basis_fn[i] * leaf.rgb[off + i];
                             }
                             const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
                             const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
@@ -385,7 +386,7 @@ __device__ __inline__ void trace_ray_backward(
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-tree_val[j]));
+                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-leaf.rgb[j]));
                             const scalar_t toadd = weight * sigmoid * (
                                     1.f - sigmoid) * grad_output[j];
                             atomicAdd(&grad_tree_val[j], toadd);
@@ -409,10 +410,10 @@ __device__ __inline__ void trace_ray_backward(
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
                 int32_t _node_id;
-                const scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data,
-                        tree.child, pos, &cube_sz, &_node_id);
+                TreeLeaf<scalar_t> leaf = query_single_from_root<scalar_t>(
+                        tree.data, tree, pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
-                const int curr_leaf_offset = tree_val - tree.data.data();
+                const int curr_leaf_offset = leaf.rgb - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
 
                 scalar_t att;
@@ -421,7 +422,7 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + opt.step_size;
-                const scalar_t sigma = tree_val[data_dim - 1];
+                const scalar_t sigma = *leaf.sigma;
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -432,13 +433,13 @@ __device__ __inline__ void trace_ray_backward(
                             int off = t * opt.basis_dim;
                             scalar_t tmp = 0.0;
                             for (int i = 0; i < opt.basis_dim; ++i) {
-                                tmp += basis_fn[i] * tree_val[off + i];
+                                tmp += basis_fn[i] * leaf.rgb[off + i];
                             }
                             total_color += 1.0 / (1.0 + expf(-tmp)) * grad_output[t];
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            total_color += 1.0 / (1.0 + expf(-tree_val[j])) * grad_output[j];
+                            total_color += 1.0 / (1.0 + expf(-leaf.rgb[j])) * grad_output[j];
                         }
                     }
                     light_intensity *= att;

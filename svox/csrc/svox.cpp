@@ -44,6 +44,8 @@ Tensor volume_render_backward(TreeSpec&, RaysSpec&, RenderOptions&, Tensor);
 Tensor volume_render_image_backward(TreeSpec&, CameraSpec&, RenderOptions&,
                                     Tensor);
 
+std::tuple<Tensor, Tensor> quantize_median_cut(Tensor, int32_t);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<RaysSpec>(m, "RaysSpec")
         .def(py::init<>())
@@ -58,7 +60,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("extra_data", &TreeSpec::extra_data)
         .def_readwrite("offset", &TreeSpec::offset)
         .def_readwrite("scaling", &TreeSpec::scaling)
-        .def_readwrite("_weight_accum", &TreeSpec::_weight_accum);
+        .def_readwrite("_weight_accum", &TreeSpec::_weight_accum)
+        .def_readwrite("quant_colors", &TreeSpec::quant_colors)
+        .def_readwrite("quant_color_map", &TreeSpec::quant_color_map)
+        .def_readwrite("data_dim", &TreeSpec::data_dim);
 
     py::class_<CameraSpec>(m, "CameraSpec")
         .def(py::init<>())
@@ -75,6 +80,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
                        &RenderOptions::background_brightness)
         .def_readwrite("ndc_width", &RenderOptions::ndc_width)
         .def_readwrite("ndc_height", &RenderOptions::ndc_height)
+        .def_readwrite("ndc_focal", &RenderOptions::ndc_focal)
         .def_readwrite("format", &RenderOptions::format)
         .def_readwrite("basis_dim", &RenderOptions::basis_dim)
         .def_readwrite("sigma_thresh", &RenderOptions::sigma_thresh)
@@ -88,4 +94,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("volume_render_image", &volume_render_image);
     m.def("volume_render_backward", &volume_render_backward);
     m.def("volume_render_image_backward", &volume_render_image_backward);
+
+    m.def("quantize_median_cut", &quantize_median_cut);
 }

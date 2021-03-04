@@ -14,3 +14,4 @@ include svox/csrc/include/data_spec_packed.cuh
 include svox/csrc/svox.cpp
 include svox/csrc/svox_kernel.cu
 include svox/csrc/rt_kernel.cu
+include svox/csrc/quantizer.cpp

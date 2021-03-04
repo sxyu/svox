@@ -121,6 +121,11 @@ class N3Tree(nn.Module):
         self.geom_resize_fact = geom_resize_fact
         self.data_format = DataFormat(data_format) if data_format is not None else None
 
+        self.register_buffer("quant_colors", torch.empty((0, 0),
+            dtype=torch.float32, device=map_location))
+        self.register_buffer("quant_color_map", torch.empty((0, 0, 0, 0),
+            dtype=torch.int32, device=map_location))
+
         if extra_data is not None:
             assert isinstance(extra_data, torch.Tensor)
             self.register_buffer("extra_data", extra_data.to(device=map_location))
@@ -626,13 +631,15 @@ class N3Tree(nn.Module):
         return WeightAccumulator(self)
 
     # Persistence
-    def save(self, path, shrink=True, compress=True):
+    def save(self, path, shrink=True, compress=False, strip=False):
         """
         Save to from npz file
 
         :param path: npz path
         :param shrink: if True (default), applies shrink_to_fit before saving
         :param compress: whether to compress the npz; may be slow
+        :param strip: whether only to include attributes needed for
+                      rendering/querying
 
         """
         if shrink:
@@ -640,15 +647,19 @@ class N3Tree(nn.Module):
         data = {
             "data_dim" : self.data_dim,
             "child" : self.child.cpu(),
-            "parent_depth" : self.parent_depth.cpu(),
-            "n_internal" : self._n_internal.cpu().item(),
-            "n_free" : self._n_free.cpu().item(),
             "invradius3" : self.invradius.cpu(),
             "offset" : self.offset.cpu(),
-            "depth_limit": self.depth_limit,
-            "geom_resize_fact": self.geom_resize_fact,
             "data": self.data.data.cpu().numpy().astype(np.float16)
         }
+        if not strip:
+            data.update({
+                "n_internal" : self._n_internal.cpu().item(),
+                "n_free" : self._n_free.cpu().item(),
+                "geom_resize_fact": self.geom_resize_fact,
+                "depth_limit": self.depth_limit,
+                "parent_depth" : self.parent_depth.cpu(),
+            })
+
         if self.data_format is not None:
             data["data_format"] = repr(self.data_format)
         if self.extra_data is not None:
@@ -692,6 +703,22 @@ class N3Tree(nn.Module):
         tree.extra_data = torch.from_numpy(z['extra_data']).to(map_location) if \
                           'extra_data' in z.files else None
         return tree
+
+    def quantize_median_cut(self, order):
+        assert _C is not None  # Need C extension
+        # Get rid of bogus elements
+        self.shrink_to_fit()
+        device = self.data.device
+        # Currently implemented on CPU
+        colors, color_map = _C.quantize_median_cut(self.data.data[1:].cpu(), order)
+
+        child = self.child.cpu()
+        leaf_sel = (child < 0).nonzero(as_tuple=True)
+        child[leaf_sel] = -color_map[-child[leaf_sel].long() - 1] + 1
+
+        self.data = nn.Parameter(colors.to(device=device))
+        self.child = child.to(device=device)
+        self._invalidate()
 
     # Magic
     def __repr__(self):
@@ -815,6 +842,7 @@ class N3Tree(nn.Module):
         Pack tree into a TreeSpec (for passing data to C++ extension)
         """
         tree_spec = _C.TreeSpec()
+        tree_spec.data_dim = self.data_dim
         tree_spec.data = self.data
         tree_spec.child = self.child
         tree_spec.extra_data = self.extra_data if self.extra_data is not None else \
@@ -823,6 +851,8 @@ class N3Tree(nn.Module):
                   [0.0, 0.0, 0.0], device=self.data.device)
         tree_spec.scaling = self.invradius if world else torch.tensor(
                   [1.0, 1.1, 0.0], device=self.data.device)
+        tree_spec.quant_colors = self.quant_colors
+        tree_spec.quant_color_map = self.quant_color_map
         if hasattr(self, '_weight_accum'):
             tree_spec._weight_accum = self._weight_accum if \
                     self._weight_accum is not None else torch.empty(

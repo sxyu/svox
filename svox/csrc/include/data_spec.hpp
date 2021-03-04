@@ -43,7 +43,10 @@ struct TreeSpec {
     torch::Tensor extra_data;
     torch::Tensor offset;
     torch::Tensor scaling;
+    torch::Tensor quant_colors;
+    torch::Tensor quant_color_map;
     torch::Tensor _weight_accum;
+    int data_dim;
 
     inline void check() {
         CHECK_INPUT(data);
