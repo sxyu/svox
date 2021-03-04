@@ -35,7 +35,7 @@ template <typename scalar_t>
 __device__ __inline__ TreeLeaf<scalar_t> query_single_from_root(
     torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
        data,
-    PackedTreeSpec<scalar_t>& tree,
+    PackedTreeSpec<scalar_t>& __restrict__ tree,
     scalar_t* __restrict__ xyz_inout,
     scalar_t* __restrict__ cube_sz_out,
     int32_t* __restrict__ node_id_out) {

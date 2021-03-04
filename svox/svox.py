@@ -664,6 +664,9 @@ class N3Tree(nn.Module):
             data["data_format"] = repr(self.data_format)
         if self.extra_data is not None:
             data["extra_data"] = self.extra_data.cpu()
+        if self.quant_colors.numel():
+            data["quant_colors"] = self.quant_colors.cpu()
+            data["quant_color_map"] = self.quant_color_map.cpu()
         if compress:
             np.savez_compressed(path, **data)
         else:
@@ -694,10 +697,13 @@ class N3Tree(nn.Module):
         tree.depth_limit = int(z["depth_limit"])
         tree.geom_resize_fact = float(z["geom_resize_fact"])
         tree.data.data = torch.from_numpy(z["data"].astype(np.float32)).to(map_location)
-        if 'n_free' in z.files:
+        if "n_free" in z.files:
             tree._n_free.fill_(z["n_free"].item())
         else:
             tree._n_free.zero_()
+        if "quant_colors" in z.files:
+            tree.quant_colors = torch.from_numpy(z["quant_colors"]).to(map_location)
+            tree.quant_color_map = torch.from_numpy(z["quant_color_map"]).to(map_location)
         tree.data_format = DataFormat(z['data_format'].item()) if \
                 'data_format' in z.files else None
         tree.extra_data = torch.from_numpy(z['extra_data']).to(map_location) if \
@@ -707,17 +713,27 @@ class N3Tree(nn.Module):
     def quantize_median_cut(self, order):
         assert _C is not None  # Need C extension
         # Get rid of bogus elements
-        self.shrink_to_fit()
         device = self.data.device
+
+        assert self.quant_colors.numel() == 0  # Cannot quantize twice
+
+        data = self.data.data.cpu().reshape(-1, self.data_dim)
+        orig_data_sz = data.shape[0]
+        data_nz_mask = data[:, -1] > 0.0
+        data = data[data_nz_mask]
+        data = data[:, :-1].contiguous()
+
         # Currently implemented on CPU
-        colors, color_map = _C.quantize_median_cut(self.data.data[1:].cpu(), order)
+        colors, color_map = _C.quantize_median_cut(data, order)
 
-        child = self.child.cpu()
-        leaf_sel = (child < 0).nonzero(as_tuple=True)
-        child[leaf_sel] = -color_map[-child[leaf_sel].long() - 1] + 1
+        self.quant_colors = colors.to(device=device)
+        quant_color_map = torch.zeros((orig_data_sz,), dtype=torch.int32)
+        quant_color_map[data_nz_mask] = color_map
+        quant_color_map = quant_color_map.reshape(-1, self.N, self.N, self.N)
 
-        self.data = nn.Parameter(colors.to(device=device))
-        self.child = child.to(device=device)
+        self.quant_color_map = quant_color_map.to(device=device)
+        self.data = nn.Parameter(self.data.data[..., -1:])
+
         self._invalidate()
 
     # Magic

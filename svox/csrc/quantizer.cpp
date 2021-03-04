@@ -26,20 +26,23 @@ void _quantize_median_cut_impl(
     torch::TensorAccessor<scalar_t, 2> colors_out,
     torch::TensorAccessor<int32_t, 1> color_id_map_out, int32_t order,
     int64_t l, int64_t r, int32_t& color_idx, Comparer<scalar_t>& comp) {
+    const int64_t m = l + (r - l + 1) / 2;
     const int K = data.size(1);
     if (order <= 0) {
         torch::TensorAccessor<scalar_t, 1> color = colors_out[color_idx];
         for (int i = l; i < r; ++i) {
             const int64_t ii = tmp_rev_map[i];
-            for (int j = 0; j < K; ++j) {
-                const scalar_t val = data[ii][j];
-                color[j] += val;
-            }
             color_id_map_out[ii] = color_idx;
         }
+        std::nth_element(tmp_rev_map.data() + l, tmp_rev_map.data() + m,
+                         tmp_rev_map.data() + r, comp);
         for (int j = 0; j < K; ++j) {
-            color[j] /= r - l;
+            const scalar_t val = data[tmp_rev_map[m]][j];
+            color[j] = val;
         }
+        // for (int j = 0; j < K; ++j) {
+        //     color[j] /= r - l;
+        // }
         ++color_idx;
     } else {
         const scalar_t MAX_VAL = std::numeric_limits<scalar_t>::max() * 0.4;
@@ -63,7 +66,6 @@ void _quantize_median_cut_impl(
             }
         }
 
-        const int64_t m = l + (r - l + 1) / 2;
         std::nth_element(tmp_rev_map.data() + l, tmp_rev_map.data() + m,
                          tmp_rev_map.data() + r, comp);
 
