@@ -226,7 +226,7 @@ __device__ __inline__ void trace_ray(
     scalar_t tmin, tmax;
     scalar_t invdir[3];
     const int tree_N = tree.child.size(1);
-    const int data_dim = tree.data.size(4);
+    const int data_dim = tree.data_dim;
     const int out_data_dim = out.size(0);
 
 #pragma unroll
@@ -322,7 +322,7 @@ __device__ __inline__ void trace_ray_backward(
     scalar_t tmin, tmax;
     scalar_t invdir[3];
     const int tree_N = tree.child.size(1);
-    const int data_dim = tree.data.size(4);
+    const int data_dim = tree.data_dim;
     const int out_data_dim = grad_output.size(0);
 
 #pragma unroll
@@ -519,7 +519,7 @@ __host__ __device__ __inline__ static void maybe_world2ndc(
         RenderOptions& __restrict__ opt,
         scalar_t* __restrict__ dir,
         scalar_t* __restrict__ cen, scalar_t near = 1.f) {
-    if (opt.ndc_width < 0)
+    if (opt.ndc_width <= 1)
         return;
     scalar_t t = -(near + cen[2]) / dir[2];
     for (int i = 0; i < 3; ++i) {
@@ -553,7 +553,6 @@ __global__ void render_image_kernel(
     maybe_world2ndc(opt, dir, origin);
 
     transform_coord<scalar_t>(origin, tree.offset, tree.scaling);
-    const scalar_t delta_scale = _get_delta_scale(tree.scaling, dir);
     trace_ray<scalar_t>(
         tree,
         SingleRaySpec<scalar_t>{origin, dir, vdir},
@@ -608,7 +607,7 @@ torch::Tensor volume_render(TreeSpec& tree, RaysSpec& rays, RenderOptions& opt) 
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data_dim);
     torch::Tensor result = torch::zeros({Q, out_data_dim}, rays.origins.options());
     AT_DISPATCH_FLOATING_TYPES(rays.origins.type(), __FUNCTION__, [&] {
             device::render_ray_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
@@ -627,7 +626,7 @@ torch::Tensor volume_render_image(TreeSpec& tree, CameraSpec& cam, RenderOptions
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data_dim);
     torch::Tensor result = torch::zeros({cam.height, cam.width, out_data_dim},
             tree.data.options());
 
@@ -652,7 +651,7 @@ torch::Tensor volume_render_backward(
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data_dim);
     torch::Tensor result = torch::zeros_like(tree.data);
     AT_DISPATCH_FLOATING_TYPES(rays.origins.type(), __FUNCTION__, [&] {
             device::render_ray_backward_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
@@ -677,7 +676,7 @@ torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
 
     auto_cuda_threads();
     const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
-    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data_dim);
     torch::Tensor result = torch::zeros_like(tree.data);
 
     AT_DISPATCH_FLOATING_TYPES(tree.data.type(), __FUNCTION__, [&] {

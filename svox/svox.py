@@ -850,7 +850,7 @@ class N3Tree(nn.Module):
         tree_spec.offset = self.offset if world else torch.tensor(
                   [0.0, 0.0, 0.0], device=self.data.device)
         tree_spec.scaling = self.invradius if world else torch.tensor(
-                  [1.0, 1.1, 0.0], device=self.data.device)
+                  [1.0, 1.0, 1.0], device=self.data.device)
         tree_spec.quant_colors = self.quant_colors
         tree_spec.quant_color_map = self.quant_color_map
         if hasattr(self, '_weight_accum'):
