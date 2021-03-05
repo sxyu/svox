@@ -44,6 +44,8 @@ Tensor volume_render_backward(TreeSpec&, RaysSpec&, RenderOptions&, Tensor);
 Tensor volume_render_image_backward(TreeSpec&, CameraSpec&, RenderOptions&,
                                     Tensor);
 
+std::tuple<Tensor, Tensor> quantize_median_cut(Tensor data, Tensor, int32_t);
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::class_<RaysSpec>(m, "RaysSpec")
         .def(py::init<>())
@@ -89,4 +91,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("volume_render_image", &volume_render_image);
     m.def("volume_render_backward", &volume_render_backward);
     m.def("volume_render_image_backward", &volume_render_image_backward);
+
+    m.def("quantize_median_cut", &quantize_median_cut);
 }

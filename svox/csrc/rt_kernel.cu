@@ -336,7 +336,7 @@ __device__ __inline__ void trace_ray_backward(
         return;
     } else {
         scalar_t pos[3];
-        scalar_t basis_fn[16];
+        scalar_t basis_fn[25];
         maybe_precalc_basis<scalar_t>(opt.format, opt.basis_dim, tree.extra_data,
                 ray.vdir, basis_fn);
 
@@ -552,7 +552,6 @@ __global__ void render_image_kernel(
     maybe_world2ndc(opt, dir, origin);
 
     transform_coord<scalar_t>(origin, tree.offset, tree.scaling);
-    const scalar_t delta_scale = _get_delta_scale(tree.scaling, dir);
     trace_ray<scalar_t>(
         tree,
         SingleRaySpec<scalar_t>{origin, dir, vdir},
