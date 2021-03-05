@@ -121,10 +121,10 @@ class N3Tree(nn.Module):
         self.geom_resize_fact = geom_resize_fact
         self.data_format = DataFormat(data_format) if data_format is not None else None
 
-        self.register_buffer("quant_colors", torch.empty((0, 0),
+        self.register_buffer("quant_colors", torch.empty((0, 0, 0),
             dtype=torch.float32, device=map_location))
-        self.register_buffer("quant_color_map", torch.empty((0, 0, 0, 0),
-            dtype=torch.int32, device=map_location))
+        self.register_buffer("quant_color_map", torch.empty((0, 0, 0, 0, 0),
+            dtype=torch.int16, device=map_location))
 
         if extra_data is not None:
             assert isinstance(extra_data, torch.Tensor)
@@ -649,11 +649,11 @@ class N3Tree(nn.Module):
             "child" : self.child.cpu(),
             "invradius3" : self.invradius.cpu(),
             "offset" : self.offset.cpu(),
-            "data": self.data.data.cpu().numpy().astype(np.float16)
+            "data": self.data.data.cpu().numpy().astype(np.float16),
+            "n_internal" : self._n_internal.cpu().item(),
         }
         if not strip:
             data.update({
-                "n_internal" : self._n_internal.cpu().item(),
                 "n_free" : self._n_free.cpu().item(),
                 "geom_resize_fact": self.geom_resize_fact,
                 "depth_limit": self.depth_limit,
@@ -665,7 +665,7 @@ class N3Tree(nn.Module):
         if self.extra_data is not None:
             data["extra_data"] = self.extra_data.cpu()
         if self.quant_colors.numel():
-            data["quant_colors"] = self.quant_colors.cpu()
+            data["quant_colors"] = self.quant_colors.cpu().numpy().astype(np.float16)
             data["quant_color_map"] = self.quant_color_map.cpu()
         if compress:
             np.savez_compressed(path, **data)
@@ -686,7 +686,8 @@ class N3Tree(nn.Module):
         tree.data_dim = int(z["data_dim"])
         tree.child = torch.from_numpy(z["child"]).to(map_location)
         tree.N = tree.child.shape[-1]
-        tree.parent_depth = torch.from_numpy(z["parent_depth"]).to(map_location)
+        if "parent_depth" in z.files:
+            tree.parent_depth = torch.from_numpy(z["parent_depth"]).to(map_location)
         tree._n_internal.fill_(z["n_internal"].item())
         if "invradius3" in z.files:
             tree.invradius = torch.from_numpy(z["invradius3"].astype(
@@ -694,15 +695,16 @@ class N3Tree(nn.Module):
         else:
             tree.invradius.fill_(z["invradius"].item())
         tree.offset = torch.from_numpy(z["offset"].astype(np.float32)).to(map_location)
-        tree.depth_limit = int(z["depth_limit"])
-        tree.geom_resize_fact = float(z["geom_resize_fact"])
+        tree.depth_limit = int(z.get("depth_limit", 10))
+        tree.geom_resize_fact = float(z.get("geom_resize_fact", 1.0))
         tree.data.data = torch.from_numpy(z["data"].astype(np.float32)).to(map_location)
         if "n_free" in z.files:
             tree._n_free.fill_(z["n_free"].item())
         else:
             tree._n_free.zero_()
         if "quant_colors" in z.files:
-            tree.quant_colors = torch.from_numpy(z["quant_colors"]).to(map_location)
+            tree.quant_colors = torch.from_numpy(z["quant_colors"].astype(
+                np.float32)).to(map_location)
             tree.quant_color_map = torch.from_numpy(z["quant_color_map"]).to(map_location)
         tree.data_format = DataFormat(z['data_format'].item()) if \
                 'data_format' in z.files else None
@@ -712,27 +714,36 @@ class N3Tree(nn.Module):
 
     def quantize_median_cut(self, order):
         assert _C is not None  # Need C extension
-        # Get rid of bogus elements
         device = self.data.device
 
         assert self.quant_colors.numel() == 0  # Cannot quantize twice
 
         data = self.data.data.cpu().reshape(-1, self.data_dim)
         orig_data_sz = data.shape[0]
-        data_nz_mask = data[:, -1] > 0.0
-        data = data[data_nz_mask]
-        data = data[:, :-1].contiguous()
+        #  weights = data[:, -1].contiguous() if weighted else torch.empty(
+        #          (0,), dtype=torch.float32)
+        basis_dim = (self.data_dim - 1) // 3
+        data = data[:, :-1].reshape(-1, 3, basis_dim).unbind(-1)
+
+        from tqdm import tqdm
+        all_colors = []
+        all_color_maps = []
 
         # Currently implemented on CPU
-        colors, color_map = _C.quantize_median_cut(data, order)
+        for i, d in tqdm(enumerate(data), total=len(data)):
+            colors, color_map = _C.quantize_median_cut(d.contiguous(), order)
+            all_colors.append(colors)
+            all_color_maps.append(color_map)
 
-        self.quant_colors = colors.to(device=device)
-        quant_color_map = torch.zeros((orig_data_sz,), dtype=torch.int32)
-        quant_color_map[data_nz_mask] = color_map
-        quant_color_map = quant_color_map.reshape(-1, self.N, self.N, self.N)
+        self.quant_colors = torch.stack(all_colors, dim=0).to(device=device)
+        quant_color_map = torch.stack(all_color_maps, dim=-1)
+        quant_color_map = quant_color_map.reshape(-1,
+                self.N, self.N, self.N, basis_dim)
 
-        self.quant_color_map = quant_color_map.to(device=device)
+        self.quant_color_map = quant_color_map.to(torch.int16).to(device=device)
         self.data = nn.Parameter(self.data.data[..., -1:])
+
+        print(self.quant_colors.shape, self.quant_color_map.shape, self.data.shape)
 
         self._invalidate()
 

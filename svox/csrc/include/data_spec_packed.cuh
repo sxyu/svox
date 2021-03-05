@@ -34,9 +34,9 @@ struct PackedTreeSpec {
         child(tree.child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>()),
         extra_data(tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>()),
         quant_colors(tree.quant_colors.packed_accessor32<scalar_t,
-                2, torch::RestrictPtrTraits>()),
-        quant_color_map(tree.quant_color_map.packed_accessor32<int32_t,
-                4, torch::RestrictPtrTraits>()),
+                3, torch::RestrictPtrTraits>()),
+        quant_color_map(tree.quant_color_map.packed_accessor32<int16_t,
+                5, torch::RestrictPtrTraits>()),
         offset(tree.offset.data<scalar_t>()),
         scaling(tree.scaling.data<scalar_t>()),
         weight_accum(tree._weight_accum.numel() > 0 ?
@@ -50,9 +50,9 @@ struct PackedTreeSpec {
         child;
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         extra_data;
-    torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
         quant_colors;
-    torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor32<int16_t, 5, torch::RestrictPtrTraits>
         quant_color_map;
     const scalar_t* __restrict__ offset;
     const scalar_t* __restrict__ scaling;

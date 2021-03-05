@@ -30,6 +30,9 @@
 
 namespace {
 
+#define MAX_BASIS_DIM 25
+#define MAX_DATA_DIM 76
+
 // Automatically choose number of CUDA threads based on HW CUDA kernel count
 int cuda_n_threads = -1;
 __host__ void auto_cuda_threads() {
@@ -226,7 +229,6 @@ __device__ __inline__ void trace_ray(
     scalar_t tmin, tmax;
     scalar_t invdir[3];
     const int tree_N = tree.child.size(1);
-    const int data_dim = tree.data_dim;
     const int out_data_dim = out.size(0);
 
 #pragma unroll
@@ -235,6 +237,7 @@ __device__ __inline__ void trace_ray(
     }
     _dda_unit(ray.origin, invdir, &tmin, &tmax);
 
+    const bool quant = tree.quant_colors.size(0) > 0;
     if (tmax < 0 || tmin > tmax) {
         // Ray doesn't hit box
         for (int j = 0; j < out_data_dim; ++j) {
@@ -246,7 +249,8 @@ __device__ __inline__ void trace_ray(
             out[j] = 0.f;
         }
         scalar_t pos[3];
-        scalar_t basis_fn[25];
+        scalar_t basis_fn[MAX_BASIS_DIM];
+        scalar_t data_ptr_buf[MAX_DATA_DIM];
         maybe_precalc_basis<scalar_t>(opt.format, opt.basis_dim,
                 tree.extra_data, ray.vdir, basis_fn);
 
@@ -259,8 +263,9 @@ __device__ __inline__ void trace_ray(
             }
 
             int32_t node_id;
-            TreeLeaf<scalar_t> leaf = query_single_from_root<scalar_t>(
-                    tree.data, tree, pos, &cube_sz, &node_id);
+            scalar_t* data_ptr = query_single_from_root<scalar_t>(
+                    tree.data, tree, pos, &cube_sz, &node_id,
+                    quant ? data_ptr_buf : nullptr);
 
             scalar_t att;
             scalar_t subcube_tmin, subcube_tmax;
@@ -268,7 +273,7 @@ __device__ __inline__ void trace_ray(
 
             const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
             const scalar_t delta_t = t_subcube + opt.step_size;
-            const scalar_t sigma = *leaf.sigma;
+            const scalar_t sigma = data_ptr[tree.data_dim - 1];
             if (sigma > opt.sigma_thresh) {
                 att = expf(-delta_t * delta_scale * sigma);
                 const scalar_t weight = light_intensity * (1.f - att);
@@ -278,13 +283,13 @@ __device__ __inline__ void trace_ray(
                         int off = t * opt.basis_dim;
                         scalar_t tmp = 0.0;
                         for (int i = 0; i < opt.basis_dim; ++i) {
-                            tmp += basis_fn[i] * leaf.rgb[off + i];
+                            tmp += basis_fn[i] * data_ptr[off + i];
                         }
                         out[t] += weight / (1.0 + expf(-tmp));
                     }
                 } else {
                     for (int j = 0; j < out_data_dim; ++j) {
-                        out[j] += weight / (1.0 + expf(-leaf.rgb[j]));
+                        out[j] += weight / (1.0 + expf(-data_ptr[j]));
                     }
                 }
                 light_intensity *= att;
@@ -323,7 +328,6 @@ __device__ __inline__ void trace_ray_backward(
     scalar_t tmin, tmax;
     scalar_t invdir[3];
     const int tree_N = tree.child.size(1);
-    const int data_dim = tree.data_dim;
     const int out_data_dim = grad_output.size(0);
 
 #pragma unroll
@@ -337,7 +341,7 @@ __device__ __inline__ void trace_ray_backward(
         return;
     } else {
         scalar_t pos[3];
-        scalar_t basis_fn[16];
+        scalar_t basis_fn[MAX_BASIS_DIM];
         maybe_precalc_basis<scalar_t>(opt.format, opt.basis_dim, tree.extra_data,
                 ray.vdir, basis_fn);
 
@@ -350,10 +354,10 @@ __device__ __inline__ void trace_ray_backward(
 
                 int32_t _node_id;
                 // FIXME support quantized gradient to codebook
-                TreeLeaf<scalar_t> leaf = query_single_from_root<scalar_t>(
+                scalar_t* data_ptr = query_single_from_root<scalar_t>(
                         tree.data, tree, pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
-                const int curr_leaf_offset = leaf.rgb - tree.data.data();
+                const int curr_leaf_offset = data_ptr - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
 
                 scalar_t att;
@@ -362,7 +366,7 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + opt.step_size;
-                const scalar_t sigma = *leaf.sigma;
+                const scalar_t sigma = data_ptr[tree.data_dim - 1];
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -373,7 +377,7 @@ __device__ __inline__ void trace_ray_backward(
                             int off = t * opt.basis_dim;
                             scalar_t tmp = 0.0;
                             for (int i = 0; i < opt.basis_dim; ++i) {
-                                tmp += basis_fn[i] * leaf.rgb[off + i];
+                                tmp += basis_fn[i] * data_ptr[off + i];
                             }
                             const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
                             const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
@@ -387,7 +391,7 @@ __device__ __inline__ void trace_ray_backward(
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-leaf.rgb[j]));
+                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-data_ptr[j]));
                             const scalar_t toadd = weight * sigmoid * (
                                     1.f - sigmoid) * grad_output[j];
                             atomicAdd(&grad_tree_val[j], toadd);
@@ -411,10 +415,10 @@ __device__ __inline__ void trace_ray_backward(
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
                 int32_t _node_id;
-                TreeLeaf<scalar_t> leaf = query_single_from_root<scalar_t>(
+                scalar_t* data_ptr = query_single_from_root<scalar_t>(
                         tree.data, tree, pos, &cube_sz, &_node_id);
                 // Reuse offset on gradient
-                const int curr_leaf_offset = leaf.rgb - tree.data.data();
+                const int curr_leaf_offset = data_ptr - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
 
                 scalar_t att;
@@ -423,7 +427,7 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + opt.step_size;
-                const scalar_t sigma = *leaf.sigma;
+                const scalar_t sigma = data_ptr[tree.data_dim - 1];
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -434,13 +438,13 @@ __device__ __inline__ void trace_ray_backward(
                             int off = t * opt.basis_dim;
                             scalar_t tmp = 0.0;
                             for (int i = 0; i < opt.basis_dim; ++i) {
-                                tmp += basis_fn[i] * leaf.rgb[off + i];
+                                tmp += basis_fn[i] * data_ptr[off + i];
                             }
                             total_color += 1.0 / (1.0 + expf(-tmp)) * grad_output[t];
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            total_color += 1.0 / (1.0 + expf(-leaf.rgb[j])) * grad_output[j];
+                            total_color += 1.0 / (1.0 + expf(-data_ptr[j])) * grad_output[j];
                         }
                     }
                     light_intensity *= att;
@@ -645,6 +649,7 @@ torch::Tensor volume_render_backward(
     RenderOptions& opt,
     torch::Tensor grad_output) {
     tree.check();
+    TORCH_CHECK(tree.quant_colors.size(0) == 0); // FIXME
     rays.check();
     DEVICE_GUARD(tree.data);
 
@@ -670,6 +675,7 @@ torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
                                            RenderOptions& opt,
                                            torch::Tensor grad_output) {
     tree.check();
+    TORCH_CHECK(tree.quant_colors.size(0) == 0); // FIXME
     cam.check();
     DEVICE_GUARD(tree.data);
 

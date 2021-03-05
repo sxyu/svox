@@ -2,6 +2,7 @@
 
 #include <torch/extension.h>
 #include <cuda.h>
+#include <cstdint>
 #include <cuda_runtime.h>
 #include <utility>
 #include "data_spec_packed.cuh"
@@ -25,20 +26,15 @@ __device__ __inline__ void transform_coord(scalar_t* __restrict__ q,
     }
 }
 
-template<class scalar_t>
-struct TreeLeaf {
-    scalar_t* rgb;
-    scalar_t* sigma;
-};
-
 template <typename scalar_t>
-__device__ __inline__ TreeLeaf<scalar_t> query_single_from_root(
+__device__ __inline__ scalar_t* query_single_from_root(
     torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
        data,
     PackedTreeSpec<scalar_t>& __restrict__ tree,
     scalar_t* __restrict__ xyz_inout,
     scalar_t* __restrict__ cube_sz_out,
-    int32_t* __restrict__ node_id_out) {
+    int32_t* __restrict__ node_id_out,
+    scalar_t* __restrict__ out_ptr=nullptr) {
     const scalar_t N = tree.child.size(1);
     clamp_coord<scalar_t>(xyz_inout);
 
@@ -60,21 +56,35 @@ __device__ __inline__ TreeLeaf<scalar_t> query_single_from_root(
         if (skip == 0) {
             *node_id_out = node_id * N * N * N + u * N * N + v * N + w;
             if (tree.quant_colors.size(0)) {
-                return TreeLeaf<scalar_t>{
-                        &tree.quant_colors[tree.quant_color_map[node_id][u][v][w]][0],
-                        &data[node_id][u][v][w][tree.data_dim - 1]
-                };
+                // This condition makes things slow
+                // Decode from codebook
+                const auto n_col = tree.quant_colors.size(0);
+                for (int i = 0; i < n_col; ++i) {
+                    uint16_t color_idx = tree.quant_color_map[node_id][u][v][w][i];
+                    torch::TensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, int32_t>
+                        color_ptr = tree.quant_colors[i][color_idx];
+                    for (int j = 0; j < 3; ++j) {
+                        out_ptr[j * n_col + i] = color_ptr[j];
+                    }
+                }
+                out_ptr[tree.data_dim - 1] = data[node_id][u][v][w][0];
+                return out_ptr;
             } else {
-                return TreeLeaf<scalar_t>{
-                        &data[node_id][u][v][w][0],
-                        &data[node_id][u][v][w][tree.data_dim - 1]
-                };
+                scalar_t* leaf = &data[node_id][u][v][w][0];
+                if (out_ptr != nullptr) {
+                    // Copy
+                    for (int i = 0; i < tree.data_dim; ++i) {
+                        out_ptr[i] = leaf[i];
+                    }
+                    return out_ptr;
+                }
+                return leaf;
             }
         }
         *cube_sz_out *= N;
         node_id += skip;
     }
-    return TreeLeaf<scalar_t>{nullptr, nullptr};
+    return nullptr;
 }
 
 }  // namespace device

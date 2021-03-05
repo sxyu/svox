@@ -32,17 +32,20 @@ void _quantize_median_cut_impl(
         torch::TensorAccessor<scalar_t, 1> color = colors_out[color_idx];
         for (int i = l; i < r; ++i) {
             const int64_t ii = tmp_rev_map[i];
+            for (int j = 0; j < K; ++j) {
+                color[j] += data[ii][j];
+            }
             color_id_map_out[ii] = color_idx;
         }
-        std::nth_element(tmp_rev_map.data() + l, tmp_rev_map.data() + m,
-                         tmp_rev_map.data() + r, comp);
-        for (int j = 0; j < K; ++j) {
-            const scalar_t val = data[tmp_rev_map[m]][j];
-            color[j] = val;
-        }
+        // std::nth_element(tmp_rev_map.data() + l, tmp_rev_map.data() + m,
+        //                  tmp_rev_map.data() + r, comp);
         // for (int j = 0; j < K; ++j) {
-        //     color[j] /= r - l;
+        //     const scalar_t val = data[tmp_rev_map[m]][j];
+        //     color[j] = val;
         // }
+        for (int j = 0; j < K; ++j) {
+            color[j] /= r - l;
+        }
         ++color_idx;
     } else {
         const scalar_t MAX_VAL = std::numeric_limits<scalar_t>::max() * 0.4;
