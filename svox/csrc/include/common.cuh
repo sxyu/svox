@@ -104,3 +104,40 @@ __host__ int get_sp_cores(cudaDeviceProp devProp) {
 	return cores;
 }
 }  // namespace
+
+
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
+#else
+__device__ inline double atomicAdd(double* address, double val){
+    unsigned long long int* address_as_ull = (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_ull, assumed,
+                __double_as_longlong(val + __longlong_as_double(assumed)));
+    } while (assumed != old);
+    return __longlong_as_double(old);
+}
+#endif
+
+__device__ inline void atomicMax(float* result, float value){
+    unsigned* result_as_u = (unsigned*)result;
+    unsigned old = *result_as_u, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(result_as_u, assumed, 
+                __float_as_int(fmaxf(value, __int_as_float(assumed))));
+    } while (old != assumed);
+    return;
+}
+
+__device__ inline void atomicMax(double* result, double value){
+    unsigned long long int* result_as_ull = (unsigned long long int*)result;
+    unsigned long long int old = *result_as_ull, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(result_as_ull, assumed, 
+                __double_as_longlong(fmaxf(value, __longlong_as_double(assumed))));
+    } while (old != assumed);
+    return;
+}

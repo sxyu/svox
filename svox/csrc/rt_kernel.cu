@@ -25,6 +25,7 @@
  */
 
 #include <cstdint>
+#include <vector>
 #include "common.cuh"
 #include "data_spec_packed.cuh"
 
@@ -80,6 +81,7 @@ __device__ __constant__ const float C4[] = {
     -1.7701307697799304,
     0.6258357354491761,
 };
+
 
 template<typename scalar_t>
 __host__ __device__ __inline__ static scalar_t _norm(
@@ -584,6 +586,118 @@ __global__ void render_image_backward_kernel(
         grad_data_out);
 }
 
+template <typename scalar_t>
+__device__ __inline__ void grid_trace_ray(
+    const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        data,
+        const scalar_t* __restrict__ origin,
+        const scalar_t* __restrict__ dir,
+        const scalar_t* __restrict__ vdir,
+        scalar_t step_size,
+        scalar_t delta_scale,
+        scalar_t sigma_thresh,
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        grid_weight,
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        grid_hit) {
+    scalar_t tmin, tmax;
+    scalar_t invdir[3];
+    const int reso = data.size(0);
+    scalar_t* grid_weight_val = grid_weight.data();
+    scalar_t* grid_hit_val = grid_hit.data();
+
+#pragma unroll
+    for (int i = 0; i < 3; ++i) {
+        invdir[i] = 1.0 / (dir[i] + 1e-9);
+    }
+    _dda_unit(origin, invdir, &tmin, &tmax);
+
+    if (tmax < 0 || tmin > tmax) {
+        // Ray doesn't hit box
+        return;
+    } else {
+        scalar_t pos[3];
+
+        scalar_t light_intensity = 1.f;
+        scalar_t t = tmin;
+        scalar_t cube_sz = reso;
+        int32_t u, v, w, node_id;
+        while (t < tmax) {
+            for (int j = 0; j < 3; ++j) {
+                pos[j] = origin[j] + t * dir[j];
+            }
+            
+            clamp_coord<scalar_t>(pos);
+            pos[0] *= reso;
+            pos[1] *= reso;
+            pos[2] *= reso;
+            u = floor(pos[0]);
+            v = floor(pos[1]);
+            w = floor(pos[2]);
+            pos[0] -= u;
+            pos[1] -= v;
+            pos[2] -= w;
+            node_id = u * reso * reso + v * reso + w;
+
+            scalar_t att;
+            scalar_t subcube_tmin, subcube_tmax;
+            _dda_unit(pos, invdir, &subcube_tmin, &subcube_tmax);
+
+            const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
+            const scalar_t delta_t = t_subcube + step_size;
+            const scalar_t sigma = data[u][v][w];
+            if (sigma > sigma_thresh) {
+                att = expf(-delta_t * delta_scale * sigma);
+                const scalar_t weight = light_intensity * (1.f - att);
+                light_intensity *= att;
+                
+                atomicMax(&grid_weight_val[node_id], weight);
+                atomicAdd(&grid_hit_val[node_id], (scalar_t) 1.0);
+            }
+            t += delta_t;
+        }
+    }
+}
+
+template <typename scalar_t>
+__global__ void grid_weight_render_kernel(
+    const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        data,
+    PackedCameraSpec<scalar_t> cam,
+    RenderOptions opt,
+    const scalar_t* __restrict__ offset,
+    const scalar_t* __restrict__ scaling,
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        grid_weight,
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        grid_hit) {
+    const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        grad_output,
+    PackedCameraSpec<scalar_t> cam,
+    RenderOptions opt,
+    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+        grad_data_out) {
+    CUDA_GET_THREAD_ID(tid, cam.width * cam.height);
+    int iy = tid / cam.width, ix = tid % cam.width;
+    scalar_t dir[3], origin[3];
+    cam2world_ray(ix, iy, dir, origin, cam);
+    scalar_t vdir[3] = {dir[0], dir[1], dir[2]};
+    maybe_world2ndc(opt, dir, origin);
+
+    transform_coord<scalar_t>(origin, offset, scaling);
+    const scalar_t delta_scale = _get_delta_scale(scaling, dir);
+    grid_trace_ray<scalar_t>(
+        data, 
+        origin,
+        dir,
+        vdir,
+        opt.step_size,
+        delta_scale,
+        opt.sigma_thresh,
+        grid_weight,
+        grid_hit);
+}
+
 }  // namespace device
 
 
@@ -688,4 +802,30 @@ torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
     });
     CUDA_CHECK_ERRORS;
     return result;
+}
+
+std::vector<torch::Tensor> grid_weight_render(
+    torch::Tensor data, CameraSpec& cam, RenderOptions& opt,
+    torch::Tensor offset, torch::Tensor scaling) {
+    cam.check();
+    DEVICE_GUARD(data);
+    const size_t Q = size_t(cam.width) * cam.height;
+
+    auto_cuda_threads();
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
+    torch::Tensor grid_weight = torch::zeros_like(data);
+    torch::Tensor grid_hit = torch::zeros_like(data);
+
+    AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
+            device::grid_weight_render_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
+                data.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
+                cam, 
+                opt,
+                offset.data<scalar_t>(),
+                scaling.data<scalar_t>(),
+                grid_weight.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
+                grid_hit.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>());
+    });
+    CUDA_CHECK_ERRORS;
+    return {grid_weight, grid_hit};
 }

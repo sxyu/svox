@@ -741,7 +741,7 @@ class N3Tree(nn.Module):
             good_mask = curr[:, 0] != 0
             if not good_mask.any():
                 break
-            mask[mask] = good_mask
+            mask[mask.clone()] = good_mask
 
             curr = self._unpack_index(self.parent_depth[curr[good_mask, 0], 0].long())
 

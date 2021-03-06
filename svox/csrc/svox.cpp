@@ -28,11 +28,16 @@
 
 #include <torch/extension.h>
 #include <cstdint>
+#include <vector>
 
 #include "data_spec.hpp"
 
 namespace py = pybind11;
 using torch::Tensor;
+
+std::vector<torch::Tensor> grid_weight_render(
+    torch::Tensor data, CameraSpec& cam, RenderOptions& opt,
+    torch::Tensor offset, torch::Tensor scaling);
 
 QueryResult query_vertical(TreeSpec&, Tensor);
 Tensor query_vertical_backward(TreeSpec&, Tensor, Tensor);
@@ -92,5 +97,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("volume_render_backward", &volume_render_backward);
     m.def("volume_render_image_backward", &volume_render_image_backward);
 
+    m.def("grid_weight_render", &grid_weight_render);
     m.def("quantize_median_cut", &quantize_median_cut);
 }
