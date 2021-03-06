@@ -671,6 +671,12 @@ __global__ void grid_weight_render_kernel(
         grid_weight,
     torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
         grid_hit) {
+    const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        grad_output,
+    PackedCameraSpec<scalar_t> cam,
+    RenderOptions opt,
+    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+        grad_data_out) {
     CUDA_GET_THREAD_ID(tid, cam.width * cam.height);
     int iy = tid / cam.width, ix = tid % cam.width;
     scalar_t dir[3], origin[3];

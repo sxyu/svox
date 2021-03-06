@@ -126,6 +126,7 @@ class N3Tree(nn.Module):
             self.register_buffer("extra_data", extra_data.to(device=map_location))
         else:
             self.extra_data = None
+
         self._ver = 0
         self._invalidate()
         self._lock_tree_structure = False
