@@ -378,7 +378,7 @@ __device__ __inline__ void trace_ray_backward(
                             const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
                             const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
                             for (int i = 0; i < opt.basis_dim; ++i) {
-                                scalar_t toadd = weight * basis_fn[i] *
+                                const scalar_t toadd = weight * basis_fn[i] *
                                     grad_sigmoid * grad_output[t];
                                 atomicAdd(&grad_tree_val[off + i],
                                         toadd);
@@ -388,7 +388,7 @@ __device__ __inline__ void trace_ray_backward(
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
                             const scalar_t sigmoid = 1.0 / (1.0 + expf(-tree_val[j]));
-                            scalar_t toadd = weight * sigmoid * (
+                            const scalar_t toadd = weight * sigmoid * (
                                     1.f - sigmoid) * grad_output[j];
                             atomicAdd(&grad_tree_val[j], toadd);
                             total_color += sigmoid * grad_output[j];
@@ -648,7 +648,7 @@ __device__ __inline__ void grid_trace_ray(
             const scalar_t sigma = data[u][v][w];
             if (sigma > sigma_thresh) {
                 att = expf(-delta_t * delta_scale * sigma);
-                scalar_t weight = light_intensity * (1.f - att);
+                const scalar_t weight = light_intensity * (1.f - att);
                 light_intensity *= att;
                 
                 atomicMax(&grid_weight_val[node_id], weight);
