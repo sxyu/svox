@@ -9,6 +9,9 @@ include svox/renderer.py
 include svox/__init__.py
 include svox/version.py
 include svox/csrc/include/common.cuh
+include svox/csrc/include/data_spec.hpp
+include svox/csrc/include/data_spec_packed.cuh
 include svox/csrc/svox.cpp
 include svox/csrc/svox_kernel.cu
 include svox/csrc/rt_kernel.cu
+include svox/csrc/quantizer.cpp

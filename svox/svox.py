@@ -31,32 +31,28 @@ import os.path as osp
 import torch
 import numpy as np
 from torch import nn, autograd
-from svox.helpers import N3TreeView, _get_c_extension
+from svox.helpers import N3TreeView, DataFormat, _get_c_extension
 from warnings import warn
 
 _C = _get_c_extension()
 
 class _QueryVerticalFunction(autograd.Function):
     @staticmethod
-    def forward(ctx, data, child, indices, offset, invradius):
-        out, node_ids = _C.query_vertical(data, child, indices, offset, invradius)
+    def forward(ctx, data, tree_spec, indices):
+        out, node_ids = _C.query_vertical(tree_spec, indices)
+
         ctx.mark_non_differentiable(node_ids)
-        ctx.save_for_backward(child, indices, offset, invradius)
+        ctx.tree_spec = tree_spec
+        ctx.save_for_backward(indices)
         return out, node_ids
 
     @staticmethod
     def backward(ctx, grad_out, dummy):
-        child, indices, offset, invradius = ctx.saved_tensors
-
-        grad_out = grad_out.contiguous()
         if ctx.needs_input_grad[0]:
-            grad_data = _C.query_vertical_backward(
-                    child, indices, grad_out,
-                    offset, invradius)
-        else:
-            grad_data = None
-
-        return grad_data, None, None, None, None
+            return _C.query_vertical_backward(ctx.tree_spec,
+                         ctx.saved_tensors[0],
+                         grad_out.contiguous()), None, None
+        return None, None, None
 
 
 class N3Tree(nn.Module):
@@ -74,7 +70,7 @@ class N3Tree(nn.Module):
     def __init__(self, N=2, data_dim=4, depth_limit=10,
             init_reserve=1, init_refine=0, geom_resize_fact=1.5,
             radius=0.5, center=[0.5, 0.5, 0.5],
-            data_format=None,
+            data_format="RGBA",
             extra_data=None,
             map_location="cpu"):
         """
@@ -123,7 +119,8 @@ class N3Tree(nn.Module):
 
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
-        self.data_format = data_format
+        self.data_format = DataFormat(data_format) if data_format is not None else None
+
         if extra_data is not None:
             assert isinstance(extra_data, torch.Tensor)
             self.register_buffer("extra_data", extra_data.to(device=map_location))
@@ -188,10 +185,7 @@ class N3Tree(nn.Module):
 
                 remain_mask &= nonterm_mask
         else:
-            _C.assign_vertical(self.data, self.child, indices,
-                               values,
-                               self.offset,
-                               self.invradius)
+            _C.assign_vertical(self._spec(), indices, values)
 
     def forward(self, indices, cuda=True, want_node_ids=False, world=True):
         """
@@ -256,14 +250,8 @@ class N3Tree(nn.Module):
             return result
         else:
             result, node_ids = _QueryVerticalFunction.apply(
-                                self.data, self.child, indices,
-                                self.offset if world else torch.tensor(
-                                    [0.0, 0.0, 0.0], device=indices.device),
-                                self.invradius if world else 1.0)
-            if want_node_ids:
-                return result, node_ids.long()
-            else:
-                return result
+                                self.data, self._spec(world), indices);
+            return (result, node_ids.long()) if want_node_ids else result
 
     # Special features
     def snap(self, indices):
@@ -661,7 +649,7 @@ class N3Tree(nn.Module):
             "data": self.data.data.cpu().numpy().astype(np.float16)
         }
         if self.data_format is not None:
-            data["data_format"] = self.data_format
+            data["data_format"] = repr(self.data_format)
         if self.extra_data is not None:
             data["extra_data"] = self.extra_data.cpu()
         if compress:
@@ -698,17 +686,18 @@ class N3Tree(nn.Module):
             tree._n_free.fill_(z["n_free"].item())
         else:
             tree._n_free.zero_()
-        tree.data_format = z['data_format'].item() if 'data_format' in z.files else None
+        tree.data_format = DataFormat(z['data_format'].item()) if \
+                'data_format' in z.files else None
         tree.extra_data = torch.from_numpy(z['extra_data']).to(map_location) if \
                           'extra_data' in z.files else None
         return tree
 
     # Magic
     def __repr__(self):
-        return ("svox.N3Tree(N={}, data_dim={}, depth_limit={};" +
-                " capacity:{}/{})").format(
-                    self.N, self.data_dim, self.depth_limit,
-                    self.n_internal - self._n_free.item(), self.capacity)
+        return (f"svox.N3Tree(N={self.N}, data_dim={self.data_dim}, " +
+                f"depth_limit={self.depth_limit}, " +
+                f"capacity:{self.n_internal - self._n_free.item()}/{self.capacity}, " +
+                f"data_format:{self.data_format or 'RGBA'})");
 
     def __getitem__(self, key):
         """
@@ -819,6 +808,25 @@ class N3Tree(nn.Module):
         self._ver += 1
         self._last_all_leaves = None
         self._last_frontier = None
+
+    def _spec(self, world=True):
+        """
+        Pack tree into a TreeSpec (for passing data to C++ extension)
+        """
+        tree_spec = _C.TreeSpec()
+        tree_spec.data = self.data
+        tree_spec.child = self.child
+        tree_spec.extra_data = self.extra_data if self.extra_data is not None else \
+                torch.empty((0, 0), device=self.data.device)
+        tree_spec.offset = self.offset if world else torch.tensor(
+                  [0.0, 0.0, 0.0], device=self.data.device)
+        tree_spec.scaling = self.invradius if world else torch.tensor(
+                  [1.0, 1.0, 1.0], device=self.data.device)
+        if hasattr(self, '_weight_accum'):
+            tree_spec._weight_accum = self._weight_accum if \
+                    self._weight_accum is not None else torch.empty(
+                            0, device=self.data.device)
+        return tree_spec
 
 
 # Redirect functions to N3TreeView so you can do tree.depths instead of tree[:].depths
