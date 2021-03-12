@@ -298,6 +298,7 @@ class N3Tree(nn.Module):
         t2.parent_depth = copy_to_device(self.parent_depth)
         t2._n_internal = copy_to_device(self._n_internal)
         t2._n_free = copy_to_device(self._n_free)
+        t2.data_format = self.data_format
         if data_sel is None:
             t2.data.data = copy_to_device(self.data.data)
         else:
