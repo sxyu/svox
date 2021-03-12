@@ -481,7 +481,7 @@ class N3Tree(nn.Module):
                 # Filter by depth & leaves
                 good_mask = (depths < self.depth_limit) & (self.child[sel] == 0)
                 sel = [t[good_mask] for t in sel]
-                leaf_node =  torch.stack(sel, dim=-1)
+                leaf_node =  torch.stack(sel, dim=-1).to(device=self.data.device)
                 num_nc = len(sel[0])
                 if num_nc == 0:
                     # Nothing to do
@@ -494,7 +494,7 @@ class N3Tree(nn.Module):
                     resized = True
 
                 new_idxs = torch.arange(filled, filled + num_nc,
-                        device=self.child.device, dtype=self.child.dtype) # NNC
+                        device=leaf_node.device, dtype=self.child.dtype) # NNC
 
                 self.child[filled:new_filled] = 0
                 self.child[sel] = new_idxs - leaf_node[:, 0].to(torch.int32)
