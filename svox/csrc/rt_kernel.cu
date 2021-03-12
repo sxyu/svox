@@ -260,9 +260,9 @@ __device__ __inline__ void trace_ray(
                 pos[j] = ray.origin[j] + t * ray.dir[j];
             }
 
-            int32_t node_id;
+            int64_t node_id;
             scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data, tree.child,
-                        pos, &cube_sz, &node_id);
+                        pos, &cube_sz, tree.weight_accum != nullptr ? &node_id : nullptr);
 
             scalar_t att;
             scalar_t subcube_tmin, subcube_tmax;
@@ -317,7 +317,7 @@ __device__ __inline__ void trace_ray_backward(
         grad_output,
         SingleRaySpec<scalar_t> ray,
         RenderOptions& __restrict__ opt,
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits>
         grad_data_out) {
     const scalar_t delta_scale = _get_delta_scale(tree.scaling, ray.dir);
 
@@ -349,9 +349,8 @@ __device__ __inline__ void trace_ray_backward(
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
 
-                int32_t _node_id;
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(
-                        tree.data, tree.child, pos, &cube_sz, &_node_id);
+                        tree.data, tree.child, pos, &cube_sz);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
@@ -410,9 +409,8 @@ __device__ __inline__ void trace_ray_backward(
             scalar_t light_intensity = 1.f, t = tmin, cube_sz;
             while (t < tmax) {
                 for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
-                int32_t _node_id;
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data,
-                        tree.child, pos, &cube_sz, &_node_id);
+                        tree.child, pos, &cube_sz);
                 // Reuse offset on gradient
                 const int curr_leaf_offset = tree_val - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
@@ -483,7 +481,7 @@ __global__ void render_ray_backward_kernel(
         grad_output,
         PackedRaysSpec<scalar_t> rays,
         RenderOptions opt,
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits>
         grad_data_out
         ) {
     CUDA_GET_THREAD_ID(tid, rays.origins.size(0));
@@ -568,7 +566,7 @@ __global__ void render_image_backward_kernel(
         grad_output,
     PackedCameraSpec<scalar_t> cam,
     RenderOptions opt,
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits>
         grad_data_out) {
     CUDA_GET_THREAD_ID(tid, cam.width * cam.height);
     int iy = tid / cam.width, ix = tid % cam.width;
@@ -766,7 +764,7 @@ torch::Tensor volume_render_backward(
                 grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
                 rays,
                 opt,
-                result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
+                result.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
     return result;
@@ -792,7 +790,7 @@ torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
                 grad_output.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
                 cam,
                 opt,
-                result.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>());
+                result.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
     return result;

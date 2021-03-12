@@ -30,7 +30,7 @@ struct PackedRaysSpec {
 template<class scalar_t>
 struct PackedTreeSpec {
     PackedTreeSpec(TreeSpec& tree) :
-        data(tree.data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>()),
+        data(tree.data.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>()),
         child(tree.child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>()),
         parent_depth(tree.parent_depth.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>()),
         extra_data(tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>()),
@@ -38,7 +38,7 @@ struct PackedTreeSpec {
         scaling(tree.scaling.data<scalar_t>()),
         weight_accum(tree._weight_accum.numel() > 0 ? tree._weight_accum.data<scalar_t>() : nullptr) { }
 
-    torch::PackedTensorAccessor32<scalar_t, 5, torch::RestrictPtrTraits>
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits>
         data;
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child;

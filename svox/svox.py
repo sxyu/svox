@@ -252,7 +252,7 @@ class N3Tree(nn.Module):
         else:
             result, node_ids = _QueryVerticalFunction.apply(
                                 self.data, self._spec(world), indices);
-            return (result, node_ids.long()) if want_node_ids else result
+            return (result, node_ids) if want_node_ids else result
 
     # Special features
     def snap(self, indices):
@@ -795,9 +795,15 @@ class N3Tree(nn.Module):
         Helper for increasing capacity
         """
         cap_needed = max(cap_needed, int(self.capacity * (self.geom_resize_fact - 1.0)))
+        may_oom = self.capacity + cap_needed > 1e6
+        if may_oom:
+            # Potential OOM prevention hack
+            self.data = nn.Parameter(self.data.cpu())
         self.data = nn.Parameter(torch.cat((self.data.data,
                         torch.zeros((cap_needed, *self.data.data.shape[1:]),
                                 device=self.data.device)), dim=0))
+        if may_oom:
+            self.data = nn.Parameter(self.data.to(device=self.child.device))
         self.child = torch.cat((self.child,
                                 torch.zeros((cap_needed, *self.child.shape[1:]),
                                    dtype=self.child.dtype,
