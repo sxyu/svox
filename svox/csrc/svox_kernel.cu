@@ -90,6 +90,32 @@ __global__ void assign_single_kernel(
         data_ptr[i] = values[tid][i];
 }
 
+template <typename scalar_t>
+__global__ void calc_corner_kernel(
+       PackedTreeSpec<scalar_t> tree,
+       const torch::PackedTensorAccessor32<int64_t, 2, torch::RestrictPtrTraits> indexer,
+       torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> output) {
+    CUDA_GET_THREAD_ID(tid, indexer.size(0));
+    const int N = tree.data.size(1);
+    const auto* leaf = &indexer[tid][0];
+    scalar_t* result = &output[tid][0];
+
+    int32_t curr[4] = {(int32_t) leaf[0], (int32_t) leaf[1],
+                       (int32_t) leaf[2], (int32_t) leaf[3]};
+    while (true) {
+        for (int i = 0; i < 3; ++i) {
+            result[i] += curr[i + 1];
+            result[i] /= N;
+        }
+        if (curr[0] == 0) break;
+        curr[0] = tree.parent_depth[curr[0]][0];
+        for (int i = 3; i > 0; --i) {
+            curr[i] = curr[0] % N;
+            curr[0] /= N;
+        }
+    }
+}
+
 }  // namespace device
 }  // namespace
 
@@ -151,4 +177,25 @@ torch::Tensor query_vertical_backward(
 
     CUDA_CHECK_ERRORS;
     return grad_data;
+}
+
+torch::Tensor calc_corners(
+        TreeSpec& tree,
+        torch::Tensor indexer) {
+    tree.check();
+    DEVICE_GUARD(indexer);
+    const auto Q = indexer.size(0);
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, CUDA_N_THREADS);
+
+    torch::Tensor output = torch::zeros({Q, 3}, tree.data.options());
+
+    AT_DISPATCH_FLOATING_TYPES(tree.data.type(), __FUNCTION__, [&] {
+        device::calc_corner_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
+                tree,
+                indexer.packed_accessor32<int64_t, 2, torch::RestrictPtrTraits>(),
+                output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
+    });
+
+    CUDA_CHECK_ERRORS;
+    return output;
 }

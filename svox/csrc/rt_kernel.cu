@@ -626,7 +626,7 @@ __device__ __inline__ void grid_trace_ray(
             for (int j = 0; j < 3; ++j) {
                 pos[j] = origin[j] + t * dir[j];
             }
-            
+
             clamp_coord<scalar_t>(pos);
             pos[0] *= reso;
             pos[1] *= reso;
@@ -650,7 +650,7 @@ __device__ __inline__ void grid_trace_ray(
                 att = expf(-delta_t * delta_scale * sigma);
                 const scalar_t weight = light_intensity * (1.f - att);
                 light_intensity *= att;
-                
+
                 atomicMax(&grid_weight_val[node_id], weight);
                 atomicAdd(&grid_hit_val[node_id], (scalar_t) 1.0);
             }
@@ -681,7 +681,7 @@ __global__ void grid_weight_render_kernel(
     transform_coord<scalar_t>(origin, offset, scaling);
     const scalar_t delta_scale = _get_delta_scale(scaling, dir);
     grid_trace_ray<scalar_t>(
-        data, 
+        data,
         origin,
         dir,
         vdir,
@@ -813,7 +813,7 @@ std::vector<torch::Tensor> grid_weight_render(
     AT_DISPATCH_FLOATING_TYPES(data.type(), __FUNCTION__, [&] {
             device::grid_weight_render_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
                 data.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
-                cam, 
+                cam,
                 opt,
                 offset.data<scalar_t>(),
                 scaling.data<scalar_t>(),

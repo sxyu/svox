@@ -35,9 +35,11 @@
 namespace py = pybind11;
 using torch::Tensor;
 
-std::vector<torch::Tensor> grid_weight_render(
-    torch::Tensor data, CameraSpec& cam, RenderOptions& opt,
-    torch::Tensor offset, torch::Tensor scaling);
+std::vector<torch::Tensor> grid_weight_render(torch::Tensor data,
+                                              CameraSpec& cam,
+                                              RenderOptions& opt,
+                                              torch::Tensor offset,
+                                              torch::Tensor scaling);
 
 QueryResult query_vertical(TreeSpec&, Tensor);
 Tensor query_vertical_backward(TreeSpec&, Tensor, Tensor);
@@ -48,6 +50,8 @@ Tensor volume_render_image(TreeSpec&, CameraSpec&, RenderOptions&);
 Tensor volume_render_backward(TreeSpec&, RaysSpec&, RenderOptions&, Tensor);
 Tensor volume_render_image_backward(TreeSpec&, CameraSpec&, RenderOptions&,
                                     Tensor);
+
+Tensor calc_corners(TreeSpec&, Tensor);
 
 std::tuple<Tensor, Tensor> quantize_median_cut(Tensor data, Tensor, int32_t);
 
@@ -62,6 +66,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def(py::init<>())
         .def_readwrite("data", &TreeSpec::data)
         .def_readwrite("child", &TreeSpec::child)
+        .def_readwrite("parent_depth", &TreeSpec::parent_depth)
         .def_readwrite("extra_data", &TreeSpec::extra_data)
         .def_readwrite("offset", &TreeSpec::offset)
         .def_readwrite("scaling", &TreeSpec::scaling)
@@ -96,6 +101,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("volume_render_image", &volume_render_image);
     m.def("volume_render_backward", &volume_render_backward);
     m.def("volume_render_image_backward", &volume_render_image_backward);
+
+    m.def("calc_corners", &calc_corners);
 
     m.def("grid_weight_render", &grid_weight_render);
     m.def("quantize_median_cut", &quantize_median_cut);

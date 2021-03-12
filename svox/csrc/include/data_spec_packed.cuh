@@ -32,6 +32,7 @@ struct PackedTreeSpec {
     PackedTreeSpec(TreeSpec& tree) :
         data(tree.data.packed_accessor32<scalar_t, 5, torch::RestrictPtrTraits>()),
         child(tree.child.packed_accessor32<int32_t, 4, torch::RestrictPtrTraits>()),
+        parent_depth(tree.parent_depth.packed_accessor32<int32_t, 2, torch::RestrictPtrTraits>()),
         extra_data(tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>()),
         offset(tree.offset.data<scalar_t>()),
         scaling(tree.scaling.data<scalar_t>()),
@@ -41,6 +42,8 @@ struct PackedTreeSpec {
         data;
     const torch::PackedTensorAccessor32<int32_t, 4, torch::RestrictPtrTraits>
         child;
+    const torch::PackedTensorAccessor32<int32_t, 2, torch::RestrictPtrTraits>
+        parent_depth;
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         extra_data;
     const scalar_t* __restrict__ offset;

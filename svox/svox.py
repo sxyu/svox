@@ -266,15 +266,21 @@ class N3Tree(nn.Module):
         """
         return self[indices].corners
 
-    def partial(self, data_sel=None):
+    def partial(self, data_sel=None, device=None):
         """
         Get partial tree with some of the data dimensions (channels)
         E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only
+
         :param data_sel: data channel selector, default is all channels
+        :param device: where to put result tree
+
         :return: partial N3Tree (copy)
         """
+        if device is None:
+            device = self.data.device
         if data_sel is None:
             new_data_dim = self.data_dim
+            sel_indices = None
         else:
             sel_indices = torch.arange(self.data_dim)[data_sel]
             if sel_indices.ndim == 0:
@@ -283,24 +289,29 @@ class N3Tree(nn.Module):
         t2 = N3Tree(N=self.N, data_dim=new_data_dim,
                 depth_limit=self.depth_limit,
                 geom_resize_fact=self.geom_resize_fact,
-                map_location=self.data.data.device)
-        t2.invradius = self.invradius.clone()
-        t2.offset = self.offset.clone()
-        t2.child = self.child.clone()
-        t2.parent_depth = self.parent_depth.clone()
-        t2._n_internal = self._n_internal.clone()
-        t2._n_free = self._n_free.clone()
+                map_location=device)
+        def copy_to_device(x):
+            return torch.empty(x.shape, dtype=x.dtype, device=device).copy_(x)
+        t2.invradius = copy_to_device(self.invradius)
+        t2.offset = copy_to_device(self.offset)
+        t2.child = copy_to_device(self.child)
+        t2.parent_depth = copy_to_device(self.parent_depth)
+        t2._n_internal = copy_to_device(self._n_internal)
+        t2._n_free = copy_to_device(self._n_free)
         if data_sel is None:
-            t2.data.data = self.data.data.clone()
+            t2.data.data = copy_to_device(self.data.data)
         else:
-            t2.data.data = self.data.data[..., sel_indices].contiguous()
+            t2.data.data = copy_to_device(self.data.data[..., sel_indices].contiguous())
         return t2
 
-    def clone(self):
+    def clone(self, device=None):
         """
         Deep copy the tree
+
+        :param device: device of output tree (could e.g. copy cuda tree to cpu)
+
         """
-        return self.partial()
+        return self.partial(device=device)
 
     # 'Frontier' operations (node merging/pruning)
     def merge(self, frontier_sel=None, op=torch.mean):
@@ -724,9 +735,29 @@ class N3Tree(nn.Module):
     def __idiv__(self, val):
         self[:] /= val
         return self
+    
+    @property
+    def ndim(self):
+        return 2
+
+    @property
+    def shape(self):
+        return torch.Size((self.n_leaves, self.data_dim))
+    
+    def size(self, dim):
+        return self.data_dim if dim == 1 else self.n_leaves
+
+    def numel(self):
+        return self.data_dim * self.n_leaves
+        
+    def __len__(self):
+        return self.n_leaves
 
     # Internal utils
-    def _calc_corners(self, nodes):
+    def _calc_corners(self, nodes, cuda=True):
+        if _C is not None and cuda and self.data.is_cuda:
+            return _C.calc_corners(self._spec(), nodes.to(self.data.device))
+
         Q, _ = nodes.shape
         filled = self.n_internal
 
@@ -790,7 +821,7 @@ class N3Tree(nn.Module):
     def _all_leaves(self):
         if self._last_all_leaves is None:
             self._last_all_leaves = (self.child[
-                :self.n_internal] == 0).nonzero(as_tuple=False)
+                :self.n_internal] == 0).nonzero(as_tuple=False).cpu()
         return self._last_all_leaves
 
     def world2tree(self, indices):
@@ -817,6 +848,7 @@ class N3Tree(nn.Module):
         tree_spec = _C.TreeSpec()
         tree_spec.data = self.data
         tree_spec.child = self.child
+        tree_spec.parent_depth = self.parent_depth
         tree_spec.extra_data = self.extra_data if self.extra_data is not None else \
                 torch.empty((0, 0), device=self.data.device)
         tree_spec.offset = self.offset if world else torch.tensor(
@@ -833,8 +865,8 @@ class N3Tree(nn.Module):
 # Redirect functions to N3TreeView so you can do tree.depths instead of tree[:].depths
 def _redirect_to_n3view():
     redir_props = ['depths', 'lengths', 'lengths_local', 'corners', 'corners_local',
-                   'values', 'values_local', 'ndim', 'shape']
-    redir_funcs = ['sample', 'sample_local', 'aux', 'dim', 'numel', 'size', '__len__',
+                   'values', 'values_local']
+    redir_funcs = ['sample', 'sample_local', 'aux',
             'normal_', 'clamp_', 'uniform_', 'relu_', 'sigmoid_', 'nan_to_num_']
     def redirect_func(redir_func):
         def redir_impl(self, *args, **kwargs):

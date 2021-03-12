@@ -186,19 +186,24 @@ class N3TreeView:
         self._check_ver()
         return self.tree._calc_corners(self._indexer())
 
-    def sample(self, n_samples):
+    def sample(self, n_samples, device=None):
         """
         Sample n_samples uniform points in each selected leaf (world coordinates)
+
+        :param n_samples: samples for each leaf
+        :param device: device to output random samples in
 
         :return: (n_leaves, n_samples, 3) float
         """
         self._check_ver()
-        corn = self.corners
-        length = self.lengths
+        if device is None:
+            device = self.tree.data.device
+        corn = self.corners.to(device=device)
+        length = self.lengths.to(device=device)
         if length.ndim == 1:
             length = length[:, None]
         u = torch.rand((corn.shape[0], n_samples, 3),
-                device=length.device,
+                device=device,
                 dtype=length.dtype) * length[:, None]
         return corn[:, None] + u
 

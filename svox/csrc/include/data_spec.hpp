@@ -40,6 +40,7 @@ struct RaysSpec {
 struct TreeSpec {
     torch::Tensor data;
     torch::Tensor child;
+    torch::Tensor parent_depth;
     torch::Tensor extra_data;
     torch::Tensor offset;
     torch::Tensor scaling;
@@ -48,6 +49,7 @@ struct TreeSpec {
     inline void check() {
         CHECK_INPUT(data);
         CHECK_INPUT(child);
+        CHECK_INPUT(parent_depth);
         if (extra_data.numel()) {
             CHECK_INPUT(extra_data);
         }
