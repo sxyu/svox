@@ -352,7 +352,7 @@ __device__ __inline__ void trace_ray_backward(
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(
                         tree.data, tree.child, pos, &cube_sz);
                 // Reuse offset on gradient
-                const int curr_leaf_offset = tree_val - tree.data.data();
+                const int64_t curr_leaf_offset = tree_val - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
 
                 scalar_t att;
@@ -412,7 +412,7 @@ __device__ __inline__ void trace_ray_backward(
                 const scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data,
                         tree.child, pos, &cube_sz);
                 // Reuse offset on gradient
-                const int curr_leaf_offset = tree_val - tree.data.data();
+                const int64_t curr_leaf_offset = tree_val - tree.data.data();
                 scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
 
                 scalar_t att;

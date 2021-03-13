@@ -298,11 +298,15 @@ class N3Tree(nn.Module):
         t2.parent_depth = copy_to_device(self.parent_depth)
         t2._n_internal = copy_to_device(self._n_internal)
         t2._n_free = copy_to_device(self._n_free)
+        if self.extra_data is not None:
+            t2.extra_data = copy_to_device(self.extra_data)
+        else:
+            t2.extra_data = None
         t2.data_format = self.data_format
         if data_sel is None:
-            t2.data.data = copy_to_device(self.data.data)
+            t2.data = nn.Parameter(copy_to_device(self.data.data))
         else:
-            t2.data.data = copy_to_device(self.data.data[..., sel_indices].contiguous())
+            t2.data = nn.Parameter(copy_to_device(self.data.data[..., sel_indices].contiguous()))
         return t2
 
     def clone(self, device=None):
@@ -736,7 +740,7 @@ class N3Tree(nn.Module):
     def __idiv__(self, val):
         self[:] /= val
         return self
-    
+
     @property
     def ndim(self):
         return 2
@@ -744,13 +748,13 @@ class N3Tree(nn.Module):
     @property
     def shape(self):
         return torch.Size((self.n_leaves, self.data_dim))
-    
+
     def size(self, dim):
         return self.data_dim if dim == 1 else self.n_leaves
 
     def numel(self):
         return self.data_dim * self.n_leaves
-        
+
     def __len__(self):
         return self.n_leaves
 
