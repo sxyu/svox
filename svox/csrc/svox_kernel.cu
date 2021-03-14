@@ -57,7 +57,7 @@ template <typename scalar_t>
 __global__ void query_single_kernel(
         PackedTreeSpec<scalar_t> tree,
         const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> indices,
-        torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> values_out,
+        torch::PackedTensorAccessor64<scalar_t, 2, torch::RestrictPtrTraits> values_out,
         torch::PackedTensorAccessor32<int64_t, 1, torch::RestrictPtrTraits> node_ids_out) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
     scalar_t* data_ptr = get_tree_leaf_ptr(tree.data, tree, &indices[tid][0], &node_ids_out[tid]);
@@ -69,7 +69,7 @@ template <typename scalar_t>
 __global__ void query_single_kernel_backward(
        PackedTreeSpec<scalar_t> tree,
        const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> indices,
-       const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> grad_output,
+       const torch::PackedTensorAccessor64<scalar_t, 2, torch::RestrictPtrTraits> grad_output,
        torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits> grad_data_out) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
     scalar_t* data_ptr = get_tree_leaf_ptr(grad_data_out, tree, &indices[tid][0]);
@@ -81,7 +81,7 @@ template <typename scalar_t>
 __global__ void assign_single_kernel(
        PackedTreeSpec<scalar_t> tree,
        const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> indices,
-       const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> values) {
+       const torch::PackedTensorAccessor64<scalar_t, 2, torch::RestrictPtrTraits> values) {
     CUDA_GET_THREAD_ID(tid, indices.size(0));
     scalar_t* data_ptr = get_tree_leaf_ptr(tree.data, tree, &indices[tid][0]);
     for (int i = 0; i < values.size(1); ++i)
@@ -135,7 +135,7 @@ QueryResult query_vertical(TreeSpec& tree, torch::Tensor indices) {
         device::query_single_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
                 tree,
                 indices.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                values.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                values.packed_accessor64<scalar_t, 2, torch::RestrictPtrTraits>(),
                 node_ids.packed_accessor32<int64_t, 1, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
@@ -152,7 +152,7 @@ void assign_vertical(TreeSpec& tree, torch::Tensor indices, torch::Tensor values
         device::assign_single_kernel<scalar_t><<<blocks, CUDA_N_THREADS>>>(
                 tree,
                 indices.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                values.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>());
+                values.packed_accessor64<scalar_t, 2, torch::RestrictPtrTraits>());
     });
     CUDA_CHECK_ERRORS;
 }
@@ -173,7 +173,7 @@ torch::Tensor query_vertical_backward(
         device::query_single_kernel_backward<scalar_t><<<blocks, CUDA_N_THREADS>>>(
                 tree,
                 indices.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                grad_output.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                grad_output.packed_accessor64<scalar_t, 2, torch::RestrictPtrTraits>(),
                 grad_data.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>());
     });
 
