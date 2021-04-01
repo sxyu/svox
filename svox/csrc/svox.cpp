@@ -90,6 +90,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("ndc_focal", &RenderOptions::ndc_focal)
         .def_readwrite("format", &RenderOptions::format)
         .def_readwrite("basis_dim", &RenderOptions::basis_dim)
+        .def_readwrite("min_comp", &RenderOptions::min_comp)
+        .def_readwrite("max_comp", &RenderOptions::max_comp)
         .def_readwrite("sigma_thresh", &RenderOptions::sigma_thresh)
         .def_readwrite("stop_thresh", &RenderOptions::stop_thresh);
 

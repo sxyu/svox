@@ -279,7 +279,7 @@ __device__ __inline__ void trace_ray(
                     for (int t = 0; t < out_data_dim; ++ t) {
                         int off = t * opt.basis_dim;
                         scalar_t tmp = 0.0;
-                        for (int i = 0; i < opt.basis_dim; ++i) {
+                        for (int i = opt.min_comp; i < opt.max_comp; ++i) {
                             tmp += basis_fn[i] * tree_val[off + i];
                         }
                         out[t] += weight / (1.0 + expf(-tmp));
@@ -371,12 +371,12 @@ __device__ __inline__ void trace_ray_backward(
                         for (int t = 0; t < out_data_dim; ++ t) {
                             int off = t * opt.basis_dim;
                             scalar_t tmp = 0.0;
-                            for (int i = 0; i < opt.basis_dim; ++i) {
+                            for (int i = opt.min_comp; i < opt.max_comp; ++i) {
                                 tmp += basis_fn[i] * tree_val[off + i];
                             }
                             const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
                             const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
-                            for (int i = 0; i < opt.basis_dim; ++i) {
+                            for (int i = opt.min_comp; i < opt.max_comp; ++i) {
                                 const scalar_t toadd = weight * basis_fn[i] *
                                     grad_sigmoid * grad_output[t];
                                 atomicAdd(&grad_tree_val[off + i],
@@ -431,7 +431,7 @@ __device__ __inline__ void trace_ray_backward(
                         for (int t = 0; t < out_data_dim; ++ t) {
                             int off = t * opt.basis_dim;
                             scalar_t tmp = 0.0;
-                            for (int i = 0; i < opt.basis_dim; ++i) {
+                            for (int i = opt.min_comp; i < opt.max_comp; ++i) {
                                 tmp += basis_fn[i] * tree_val[off + i];
                             }
                             total_color += 1.0 / (1.0 + expf(-tmp)) * grad_output[t];

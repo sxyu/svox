@@ -121,6 +121,8 @@ class VolumeRenderer(nn.Module):
             step_size : float=1e-3,
             background_brightness : float=1.0,
             ndc : NDCConfig=None,
+            min_comp=0,
+            max_comp=-1
         ):
         """
         Construct volume renderer associated with given N^3 tree.
@@ -131,6 +133,8 @@ class VolumeRenderer(nn.Module):
         :param ndc: NDCConfig, NDC coordinate configuration,
                     namedtuple(width, height, focal).
                     None = no NDC, use usual coordinates
+        :param min_comp: minimum SH/SG component to render
+        :param max_comp: maximum SH/SG component to render, -1=last
 
         """
         super().__init__()
@@ -138,6 +142,8 @@ class VolumeRenderer(nn.Module):
         self.step_size = step_size
         self.background_brightness = background_brightness
         self.ndc_config = ndc
+        self.min_comp = min_comp
+        self.max_comp = max_comp
         if isinstance(tree.data_format, DataFormat):
             self.data_format = tree.data_format
         else:
@@ -148,6 +154,8 @@ class VolumeRenderer(nn.Module):
                 self.data_format = DataFormat("")
             else:
                 self.data_format = DataFormat(f"SH{(ddim - 1) // 3}")
+        if self.max_comp < 0:
+            self.max_comp += self.data_format.basis_dim
         self.tree._weight_accum = None
 
     def forward(self, rays : Rays, cuda=True, fast=False):
@@ -318,9 +326,11 @@ class VolumeRenderer(nn.Module):
         opts = _C.RenderOptions()
         opts.step_size = self.step_size
         opts.background_brightness = self.background_brightness
-        
+
         opts.format = self.data_format.format
         opts.basis_dim = self.data_format.basis_dim
+        opts.min_comp = self.min_comp
+        opts.max_comp = self.max_comp
 
         if self.ndc_config is not None:
             opts.ndc_width = self.ndc_config.width

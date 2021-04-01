@@ -88,6 +88,9 @@ struct RenderOptions {
     int ndc_height;
     float ndc_focal;
 
+    int min_comp;
+    int max_comp;
+
     float sigma_thresh;
     float stop_thresh;
 };
