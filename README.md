@@ -17,7 +17,7 @@ Please also refer to the following repositories
 `pip install svox`
 
 ## Documentation
-Please see <https://www.ocf.berkeley.edu/~sxyu/docs/svox/build/html/index.html>
+Please see <https://svox.readthedocs.io>
 
 ## Troubleshooting
 If you get SIGSEGV upon importing,
