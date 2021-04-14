@@ -1,7 +1,0 @@
-{
-    "files.associations": {
-      "*.cu": "cpp",
-      "*.cuh": "cpp"
-    },
-    "python.pythonPath": "/home/ruilongli/anaconda3/envs/torchnerf/bin/python"
-}
