@@ -224,7 +224,7 @@ class N3TreeView:
 
     def aux(self, arr):
         """
-        Index an auxiliary tree data array of size (capacity, N, N, N, *)
+        Index an auxiliary tree data array of size (capacity, N, N, N, Any)
         using this view
         """
         return arr[self.key]
