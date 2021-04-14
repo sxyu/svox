@@ -56,31 +56,31 @@ C4 = [
     0.6258357354491761,
 ]
 
-def eval_sh(order, sh, dirs):
+def eval_sh(deg, sh, dirs):
     """
     Evaluate spherical harmonics at unit directions
     using hardcoded SH polynomials.
     Works with torch/np/jnp.
     ... Can be 0 or more batch dimensions.
 
-    :param order: int SH order. Currently, 0-3 supported
-    :param sh: torch.Tensor SH coeffs (..., C, (order + 1) ** 2)
+    :param deg: int SH max degree. Currently, 0-4 supported
+    :param sh: torch.Tensor SH coeffs (..., C, (max degree + 1) ** 2)
     :param dirs: torch.Tensor unit directions (..., 3)
 
     :return: (..., C)
     """
-    assert order <= 4 and order >= 0
-    assert (order + 1) ** 2 == sh.shape[-1]
+    assert deg <= 4 and deg >= 0
+    assert (deg + 1) ** 2 == sh.shape[-1]
     C = sh.shape[-2]
 
     result = C0 * sh[..., 0]
-    if order > 0:
+    if deg > 0:
         x, y, z = dirs[..., 0:1], dirs[..., 1:2], dirs[..., 2:3]
         result = (result -
                 C1 * y * sh[..., 1] +
                 C1 * z * sh[..., 2] -
                 C1 * x * sh[..., 3])
-        if order > 1:
+        if deg > 1:
             xx, yy, zz = x * x, y * y, z * z
             xy, yz, xz = x * y, y * z, x * z
             result = (result +
@@ -90,7 +90,7 @@ def eval_sh(order, sh, dirs):
                     C2[3] * xz * sh[..., 7] +
                     C2[4] * (xx - yy) * sh[..., 8])
 
-            if order > 2:
+            if deg > 2:
                 result = (result +
                         C3[0] * y * (3 * xx - yy) * sh[..., 9] +
                         C3[1] * xy * z * sh[..., 10] +
@@ -99,7 +99,7 @@ def eval_sh(order, sh, dirs):
                         C3[4] * x * (4 * zz - xx - yy) * sh[..., 13] +
                         C3[5] * z * (xx - yy) * sh[..., 14] +
                         C3[6] * x * (xx - 3 * yy) * sh[..., 15])
-                if order > 3:
+                if deg > 3:
                     result = (result + C4[0] * xy * (xx - yy) * sh[..., 16] +
                             C4[1] * yz * (3 * xx - yy) * sh[..., 17] +
                             C4[2] * xy * (7 * zz - 1) * sh[..., 18] +
@@ -112,27 +112,27 @@ def eval_sh(order, sh, dirs):
     return result
 
 
-def eval_sh_bases(order, dirs):
+def eval_sh_bases(deg, dirs):
     """
     Evaluate spherical harmonics bases at unit directions,
     without taking linear combination.
     At each point, the final result may the be 
     obtained through simple multiplication.
 
-    :param order: int SH order. Currently, 0-3 supported
+    :param deg: int SH max degree. Currently, 0-4 supported
     :param dirs: torch.Tensor (..., 3) unit directions
 
-    :return: torch.Tensor (..., (order+1) ** 2)
+    :return: torch.Tensor (..., (deg+1) ** 2)
     """
-    assert order <= 4 and order >= 0
-    result = torch.empty((*dirs.shape[:-1], (order + 1) ** 2), dtype=dirs.dtype, device=dirs.device)
+    assert deg <= 4 and deg >= 0
+    result = torch.empty((*dirs.shape[:-1], (deg + 1) ** 2), dtype=dirs.dtype, device=dirs.device)
     result[..., 0] = C0
-    if order > 0:
+    if deg > 0:
         x, y, z = dirs.unbind(-1)
         result[..., 1] = -C1 * y;
         result[..., 2] = C1 * z;
         result[..., 3] = -C1 * x;
-        if order > 1:
+        if deg > 1:
             xx, yy, zz = x * x, y * y, z * z
             xy, yz, xz = x * y, y * z, x * z
             result[..., 4] = C2[0] * xy;
@@ -141,7 +141,7 @@ def eval_sh_bases(order, dirs):
             result[..., 7] = C2[3] * xz;
             result[..., 8] = C2[4] * (xx - yy);
 
-            if order > 2:
+            if deg > 2:
                 result[..., 9] = C3[0] * y * (3 * xx - yy);
                 result[..., 10] = C3[1] * xy * z;
                 result[..., 11] = C3[2] * y * (4 * zz - xx - yy);
@@ -150,7 +150,7 @@ def eval_sh_bases(order, dirs):
                 result[..., 14] = C3[5] * z * (xx - yy);
                 result[..., 15] = C3[6] * x * (xx - 3 * yy);
 
-                if order > 3:
+                if deg > 3:
                     result[..., 16] = C4[0] * xy * (xx - yy);
                     result[..., 17] = C4[1] * yz * (3 * xx - yy);
                     result[..., 18] = C4[2] * xy * (7 * zz - 1);

@@ -147,8 +147,8 @@ class VolumeRenderer(nn.Module):
         if isinstance(tree.data_format, DataFormat):
             self.data_format = tree.data_format
         else:
-            warn("Legacy N3Tree (pre 0.2.18) without data_format, auto-infering SH order")
-            # Auto SH order
+            warn("Legacy N3Tree (pre 0.2.18) without data_format, auto-infering SH deg")
+            # Auto SH deg
             ddim = tree.data_dim
             if ddim == 4:
                 self.data_format = DataFormat("")

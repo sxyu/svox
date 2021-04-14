@@ -693,7 +693,7 @@ __global__ void grid_weight_render_kernel(
 }  // namespace device
 
 
-// Compute RGB output dimension from input dimension & SH order
+// Compute RGB output dimension from input dimension & SH degree
 __host__ int get_out_data_dim(int format, int basis_dim, int in_data_dim) {
     if (format != FORMAT_RGBA) {
         return (in_data_dim - 1) / basis_dim;
