@@ -1,0 +1,388 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>Quick Guide &mdash; svox 0.2.24 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Reference" href="svox.html" />
+    <link rel="prev" title="Welcome to the svox documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> svox
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quick Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#construction">Construction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saving-and-loading">Saving and Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#querying-and-modifying-data-using-n3treeview">Querying and Modifying Data using N3TreeView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#refinement-oracle">Refinement oracle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#differentiable-volume-rendering">Differentiable Volume Rendering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#advanced-leaf-level-accessors">Advanced Leaf-level Accessors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#advanced-volume-rendering-weight-accumulator-context">Advanced: Volume Rendering Weight Accumulator Context</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="svox.html">Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#n-3-tree">N^3-Tree</a></li>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#n-3-tree-view">N^3-Tree View</a></li>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#differentiable-volume-renderer">Differentiable Volume Renderer</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ex_nerf.html">Example: Lego Bulldozer Rendering</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">svox</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+        
+      <li>Quick Guide</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+          
+            <a href="_sources/quick.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="quick-guide">
+<h1>Quick Guide<a class="headerlink" href="#quick-guide" title="Permalink to this headline">¶</a></h1>
+<p>Below I give a quick overview of some core functionality of svox to help get you started.
+To install the library, simply use <code class="code docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">sxox</span></code>; you would of course need
+to install PyTorch first.
+You will also need the CUDA runtime to compile the CUDA extension;
+while the library works without the CUDA extension, it is very slow, and will emit a warning the
+first time a CUDA-capable operation is used.</p>
+<p>If the extension fails to build, check if your PyTorch is using the same CUDA
+version as you have installed on your system.</p>
+<div class="section" id="construction">
+<h2>Construction<a class="headerlink" href="#construction" title="Permalink to this headline">¶</a></h2>
+<p>We begin by importing the library:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">svox</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">=</span><span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="p">(</span><span class="n">N</span><span class="o">=&lt;</span><span class="n">branch_factor</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=&lt;</span><span class="n">device</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">radius</span><span class="o">=&lt;</span><span class="n">radius</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">center</span><span class="o">=&lt;</span><span class="n">center</span><span class="o">&gt;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">.</span><span class="n">cuda</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>Here,
+<code class="code docutils literal notranslate"><span class="pre">N</span></code> is the N in <span class="math notranslate nohighlight">\(N^3\)</span> tree.
+<code class="code docutils literal notranslate"><span class="pre">map_location</span></code> can be a string like ‘cuda’ and is where the tree’s data will be stored.
+Finally, <code class="code docutils literal notranslate"><span class="pre">radius</span></code> and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specify the transform of the tree in space,
+with <code class="code docutils literal notranslate"><span class="pre">radius</span></code> meaning the half-edge length of the bounding cube (1 float
+or list of 3 floats for each axis)
+and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specifying the center of the cube (list of 3 floats).</p>
+<p><code class="code docutils literal notranslate"><span class="pre">svox.N3Tree</span></code> is a PyTorch module and
+usual operations such as <code class="code docutils literal notranslate"><span class="pre">.parameters()</span></code> or <code class="code docutils literal notranslate"><span class="pre">.cuda()</span></code> can be used.
+The forward method of the N3Tree class takes a batch of points <code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">3)</span></code> and returns
+corresponding data.</p>
+</div>
+<div class="section" id="saving-and-loading">
+<h2>Saving and Loading<a class="headerlink" href="#saving-and-loading" title="Permalink to this headline">¶</a></h2>
+<p>To save and load trees to/from npz files, use</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">npz_path</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">npz_path</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>‘map_location’ can be a string like ‘cuda’ and is where the tree’s data will be loaded into, similar
+to that in the constructor.
+Since the tree is a PyTorch module, you could also use a PyTorch checkpoint, but it can be VERY inefficient.</p>
+</div>
+<div class="section" id="querying-and-modifying-data-using-n3treeview">
+<h2>Querying and Modifying Data using N3TreeView<a class="headerlink" href="#querying-and-modifying-data-using-n3treeview" title="Permalink to this headline">¶</a></h2>
+<p>For convenient query and manipulation, we provide an approximate analogy to the PyTorch tensor,
+where the tree is viewed as a matrix of size
+<code class="code docutils literal notranslate"><span class="pre">(n_leaves,</span> <span class="pre">data_dim)</span></code>. Any indexing operation into the N3Tree returns a
+<code class="code docutils literal notranslate"><span class="pre">N3TreeView</span></code> class which works like a tensor.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">shape</span>
+<span class="go">torch.Size([8, 4])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">3</span><span class="p">]</span>
+<span class="go">N3TreeView(tensor([[1., 1., 1.],</span>
+<span class="go">        [0., 0., 0.],</span>
+<span class="go">        [0., 0., 0.],</span>
+<span class="go">        [0., 0., 0.],</span>
+<span class="go">        [0., 0., 0.],</span>
+<span class="go">        [0., 0., 0.],</span>
+<span class="go">        [0., 0., 0.],</span>
+<span class="go">        [0., 0., 0.]]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[:</span><span class="mi">2</span><span class="p">]</span>
+<span class="go">N3TreeView(tensor([[ 1.,  1.,  1., -1.],</span>
+<span class="go">        [ 0.,  0.,  0., -1.]]))</span>
+</pre></div>
+</div>
+<p>You can also, of course, query the tree using <em>real spatial points</em>,
+by either using 3 indices or a <code class="code docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">3)</span></code> query matrix:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>   <span class="c1"># Query point (0, 0.5, 0)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">points</span><span class="p">]</span>      <span class="c1"># Query points (N, 3)</span>
+</pre></div>
+</div>
+<p>This returns a N3TreeView of leaves corresponding to these points, so you can also modify them:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">points</span><span class="p">]</span> <span class="o">=</span> <span class="n">values</span>      <span class="c1"># Query points (N, 3), values (N, data_dim)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">/=</span> <span class="mf">2.0</span>
+</pre></div>
+</div>
+<p>The tree is self behaves similarly to <code class="code docutils literal notranslate"><span class="pre">tree[:]</span></code>. Some more examples:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span> <span class="o">+=</span> <span class="mf">1.5</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">normal_</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[:,</span> <span class="o">-</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">clamp_</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>When used with a PyTorch operation such as <code class="code docutils literal notranslate"><span class="pre">torch.mean</span></code> or operators like <code class="code docutils literal notranslate"><span class="pre">+</span></code>,
+the N3TreeView is queried and the values are converted to a PyTorch tensor automatically.
+If you wish to get the values as a tensor explicitly, use <code class="code docutils literal notranslate"><span class="pre">view.values</span></code>.
+See the section <a class="reference internal" href="#leaf-level-acc"><span class="std std-ref">Advanced Leaf-level Accessors</span></a> for more advanced operations supported by
+N3TreeView.</p>
+</div>
+<div class="section" id="refinement-oracle">
+<h2>Refinement oracle<a class="headerlink" href="#refinement-oracle" title="Permalink to this headline">¶</a></h2>
+<p>To refine the tree, use the <code class="code docutils literal notranslate"><span class="pre">refine</span></code> function.
+The first argument allows you to refine more than once.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">refine</span><span class="p">()</span>  <span class="c1"># Refine all nodes</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">refine</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># Refine all nodes twice</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">refine</span><span class="p">()</span>  <span class="c1"># Refine leaf -1 once, through the N3TreeView</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="differentiable-volume-rendering">
+<h2>Differentiable Volume Rendering<a class="headerlink" href="#differentiable-volume-rendering" title="Permalink to this headline">¶</a></h2>
+<p>This is implemented in the <code class="code docutils literal notranslate"><span class="pre">svox.VolumeRenderer</span></code> class.
+The following code renders a perspective image:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ren</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">VolumeRenderer</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">camera</span> <span class="o">=</span> <span class="c1"># some [4, 4] camera pose matrix</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ren</span><span class="o">.</span><span class="n">render_persp</span><span class="p">(</span><span class="n">camera</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="n">height</span><span class="p">,</span> <span class="n">fx</span><span class="o">=</span><span class="n">fx</span><span class="p">)</span> <span class="c1"># Get a perspective image</span>
+</pre></div>
+</div>
+<p>Also you can render rays directly, by using the forward method of VolumeRenderer:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ray</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">Rays</span><span class="p">(</span><span class="n">origins</span> <span class="o">=</span> <span class="o">...</span> <span class="n">dirs</span><span class="o">=...</span><span class="p">,</span> <span class="n">viewdirs</span><span class="o">=...</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ren</span><span class="p">(</span><span class="n">ray</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>You can pass fast=True to either render_persp or this forward method
+to allow fast rendering (with early stopping) potentially at the cost of quality.</p>
+<p>These functions are backed by CUDA analytic derivatives.
+For example,</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">im</span> <span class="o">=</span> <span class="n">ren</span><span class="o">.</span><span class="n">render_persp</span><span class="p">(</span><span class="n">camera</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">torch</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">im</span> <span class="o">-</span> <span class="n">im_gt</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">tree</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Finally, NDC views are also internally supported in render_persp.
+To use this features, pass <code class="code docutils literal notranslate"><span class="pre">ndc=svox.NDCConfig(width=...,</span> <span class="pre">heigh=...,</span> <span class="pre">focal=...)</span></code>
+to the VolumeRenderer constructor.</p>
+</div>
+<div class="section" id="advanced-leaf-level-accessors">
+<span id="leaf-level-acc"></span><h2>Advanced Leaf-level Accessors<a class="headerlink" href="#advanced-leaf-level-accessors" title="Permalink to this headline">¶</a></h2>
+<p>Some more functions for working with leaves</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">lengths</span>  <span class="c1"># Side lengths of each leaf voxel (same order as leaf matrix)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">depths</span>   <span class="c1"># Depth of each leaf voxel (root is at **-1**)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">corners</span>  <span class="c1"># Lowest corner of each leaf voxel</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">values</span>   <span class="c1"># Values at each leaf voxel</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">n_samples</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span>   <span class="c1"># Sample uniformly random points in each voxel</span>
+</pre></div>
+</div>
+<p>In each case you may also use N3TreeView, for example</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">tree</span><span class="o">.</span><span class="n">depths</span><span class="o">==</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">corners</span>
+</pre></div>
+</div>
+<p>For each of lengths/corners/sample there is also a *_local version
+which returns points and lengths in local coordinates <span class="math notranslate nohighlight">\([0,1]^3\)</span>.</p>
+</div>
+<div class="section" id="advanced-volume-rendering-weight-accumulator-context">
+<h2>Advanced: Volume Rendering Weight Accumulator Context<a class="headerlink" href="#advanced-volume-rendering-weight-accumulator-context" title="Permalink to this headline">¶</a></h2>
+<p>Sometimes we want to accumulate volume rendering weights in each tree leaf,
+to see how much each leaf was used in the rendering process.
+We have a built-in context manager to do so.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">tree</span><span class="o">.</span><span class="n">accumulate_weights</span><span class="p">()</span> <span class="k">as</span> <span class="n">accum</span><span class="p">:</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="c1"># Do some ray/image rendering with a renderer on the tree</span>
+<span class="gp">&gt;&gt;&gt; </span>    <span class="c1"># Tree cannot be refined or shrank here</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">accum</span> <span class="o">=</span> <span class="n">accum</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The final <code class="code docutils literal notranslate"><span class="pre">accum</span></code> is a float tensor of shape
+equal to the number of leaves in the tree which can
+be used to index into the tree.
+Each entry is equal to the sum of all volume rendering weights
+for all rays which every hit the voxel within the context.
+You can use it as follows:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">accum</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">]</span><span class="o">.</span><span class="n">refine</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">accum</span> <span class="o">&lt;</span> <span class="mf">1.0</span><span class="p">,</span> <span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+</pre></div>
+</div>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="svox.html" class="btn btn-neutral float-right" title="Reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="index.html" class="btn btn-neutral float-left" title="Welcome to the svox documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021 Alex Yu.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

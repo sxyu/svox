@@ -1,5 +1,3 @@
-torch
-svox
 sphinx
 sphinx-rtd-theme
 sphinxcontrib-fulltoc

@@ -1,0 +1,265 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>Welcome to the svox documentation &mdash; svox 0.2.24 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Quick Guide" href="quick.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="#" class="icon icon-home"> svox
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="quick.html">Quick Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#construction">Construction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#saving-and-loading">Saving and Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#querying-and-modifying-data-using-n3treeview">Querying and Modifying Data using N3TreeView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#refinement-oracle">Refinement oracle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#differentiable-volume-rendering">Differentiable Volume Rendering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#advanced-leaf-level-accessors">Advanced Leaf-level Accessors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#advanced-volume-rendering-weight-accumulator-context">Advanced: Volume Rendering Weight Accumulator Context</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="svox.html">Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#n-3-tree">N^3-Tree</a></li>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#n-3-tree-view">N^3-Tree View</a></li>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#differentiable-volume-renderer">Differentiable Volume Renderer</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ex_nerf.html">Example: Lego Bulldozer Rendering</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">svox</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="#" class="icon icon-home"></a> &raquo;</li>
+        
+      <li>Welcome to the svox documentation</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+          
+            <a href="_sources/index.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="welcome-to-the-svox-documentation">
+<h1>Welcome to the svox documentation<a class="headerlink" href="#welcome-to-the-svox-documentation" title="Permalink to this headline">¶</a></h1>
+<p>This is a PlenOctree volume rendering implementation as a <em>PyTorch</em> extension with CUDA acceleration. The code is availble in <a class="reference external" href="https://github.com/sxyu/svox/">this repo</a>.
+This is part of the code release of</p>
+<div class="line-block">
+<div class="line">PlenOctrees for Real Time Rendering of Neural Radiance Fields</div>
+<div class="line">Alex Yu, Ruilong Li, Matthew Tancik, Hao Li, Ren Ng, Angjoo Kanazawa</div>
+</div>
+<div class="line-block">
+<div class="line">Paper: <a class="reference external" href="https://arxiv.org/abs/2103.14024">https://arxiv.org/abs/2103.14024</a></div>
+<div class="line">Website: <a class="reference external" href="https://alexyu.net/plenoctrees">https://alexyu.net/plenoctrees</a></div>
+<div class="line">Source code (SVOX): <a class="reference external" href="https://github.com/sxyu/svox">https://github.com/sxyu/svox</a></div>
+</div>
+<p>Install with <code class="code docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">svox</span></code>.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">svox</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="p">(</span><span class="n">data_dim</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span>
+<span class="go">svox.N3Tree(N=2, data_dim=4, depth_limit=10; capacity:1/1 max_depth:0)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="s1">&#39;cuda:0&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><code class="code docutils literal notranslate"><span class="pre">data_dim</span></code> is the size of data stored at each leaf.</p>
+<div class="toctree-wrapper compound">
+<p class="caption"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="quick.html">Quick Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#construction">Construction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#saving-and-loading">Saving and Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#querying-and-modifying-data-using-n3treeview">Querying and Modifying Data using N3TreeView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#refinement-oracle">Refinement oracle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#differentiable-volume-rendering">Differentiable Volume Rendering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#advanced-leaf-level-accessors">Advanced Leaf-level Accessors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#advanced-volume-rendering-weight-accumulator-context">Advanced: Volume Rendering Weight Accumulator Context</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="svox.html">Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#n-3-tree">N^3-Tree</a></li>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#n-3-tree-view">N^3-Tree View</a></li>
+<li class="toctree-l2"><a class="reference internal" href="svox.html#differentiable-volume-renderer">Differentiable Volume Renderer</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ex_nerf.html">Example: Lego Bulldozer Rendering</a></li>
+</ul>
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="quick.html" class="btn btn-neutral float-right" title="Quick Guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021 Alex Yu.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>

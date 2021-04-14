@@ -1,0 +1,844 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  
+  <title>Reference &mdash; svox 0.2.24 documentation</title>
+  
+
+  
+  <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+
+  
+  
+
+  
+  
+
+  
+
+  
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script async="async" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/latest.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    
+    <script type="text/javascript" src="_static/js/theme.js"></script>
+
+    
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Example: Lego Bulldozer Rendering" href="ex_nerf.html" />
+    <link rel="prev" title="Quick Guide" href="quick.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="index.html" class="icon icon-home"> svox
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <p class="caption"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="quick.html">Quick Guide</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#construction">Construction</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#saving-and-loading">Saving and Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#querying-and-modifying-data-using-n3treeview">Querying and Modifying Data using N3TreeView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#refinement-oracle">Refinement oracle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#differentiable-volume-rendering">Differentiable Volume Rendering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#advanced-leaf-level-accessors">Advanced Leaf-level Accessors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quick.html#advanced-volume-rendering-weight-accumulator-context">Advanced: Volume Rendering Weight Accumulator Context</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#n-3-tree">N^3-Tree</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#n-3-tree-view">N^3-Tree View</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#differentiable-volume-renderer">Differentiable Volume Renderer</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ex_nerf.html">Example: Lego Bulldozer Rendering</a></li>
+</ul>
+
+            
+          
+        </div>
+        
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">svox</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+        
+      <li>Reference</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+          
+            <a href="_sources/svox.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="reference">
+<h1>Reference<a class="headerlink" href="#reference" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="n-3-tree">
+<h2>N^3-Tree<a class="headerlink" href="#n-3-tree" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="svox.N3Tree">
+<em class="property"><span class="pre">class</span> </em><code class="sig-name descname"><span class="pre">N3Tree</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_reserve</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_refine</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geom_resize_fact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">radius</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'RGBA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">torch.nn.modules.module.Module</span></code></p>
+<blockquote>
+<div><p>PyTorch <span class="math notranslate nohighlight">\(N^3\)</span>-tree library with CUDA acceleration.
+By <span class="math notranslate nohighlight">\(N^3\)</span>-tree we mean a 3D tree with branching factor N at each interior node,
+where <span class="math notranslate nohighlight">\(N=2\)</span> is the familiar octree.</p>
+</div></blockquote>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><cite>nn.Parameters</cite> can change size, which
+makes current optimizers invalid. If any refine() or
+shrink_to_fit() call returns True,
+please re-make any optimizers</p>
+</div>
+<dl class="py method">
+<dt id="svox.N3Tree.__init__">
+<code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_reserve</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_refine</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geom_resize_fact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">radius</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'RGBA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Construct N^3 Tree</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>N</strong> – int branching factor N</p></li>
+<li><p><strong>data_dim</strong> – int size of data stored at each leaf</p></li>
+<li><p><strong>depth_limit</strong> – int maximum depth of tree to stop branching/refining</p></li>
+<li><p><strong>init_reserve</strong> – int amount of nodes to reserve initially</p></li>
+<li><p><strong>init_refine</strong> – int number of times to refine entire tree initially</p></li>
+<li><p><strong>geom_resize_fact</strong> – float geometric resizing factor</p></li>
+<li><p><strong>radius</strong> – float or list, 1/2 side length of cube (possibly in each dim)</p></li>
+<li><p><strong>center</strong> – list center of space</p></li>
+<li><p><strong>data_format</strong> – a string to indicate the data format</p></li>
+<li><p><strong>extra_data</strong> – extra data to include with tree</p></li>
+<li><p><strong>map_location</strong> – str device to put data</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.set">
+<code class="sig-name descname"><span class="pre">set</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cuda</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.set" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div><p>Set tree values,</p>
+<dl class="field-list simple">
+<dt class="field-odd">param indices</dt>
+<dd class="field-odd"><p>torch.Tensor (Q, 3)</p>
+</dd>
+<dt class="field-even">param values</dt>
+<dd class="field-even"><p>torch.Tensor (Q, K)</p>
+</dd>
+<dt class="field-odd">param cuda</dt>
+<dd class="field-odd"><p>whether to use CUDA kernel if available. If false,
+uses only PyTorch version.</p>
+</dd>
+</dl>
+</div></blockquote>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Beware: If multiple indices point to same leaf node,
+only one of them will be taken</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.forward">
+<code class="sig-name descname"><span class="pre">forward</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cuda</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">want_node_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">world</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.forward" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get tree values. Differentiable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>indices</strong> – <span class="math notranslate nohighlight">\((Q, 3)\)</span> the points</p></li>
+<li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
+uses only PyTorch version.</p></li>
+<li><p><strong>want_node_ids</strong> – if true, returns node ID for each query.</p></li>
+<li><p><strong>world</strong> – use world space instead of <span class="math notranslate nohighlight">\([0,1]^3\)</span>, default True</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>(Q, data_dim), [(Q)]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.snap">
+<code class="sig-name descname"><span class="pre">snap</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">indices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.snap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Snap indices to lowest corner of corresponding leaf voxel</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>indices</strong> – (B, 3) indices to snap</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>(B, 3)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.partial">
+<code class="sig-name descname"><span class="pre">partial</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_sel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.partial" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get partial tree with some of the data dimensions (channels)
+E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_sel</strong> – data channel selector, default is all channels</p></li>
+<li><p><strong>device</strong> – where to put result tree</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>partial N3Tree (copy)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.clone">
+<code class="sig-name descname"><span class="pre">clone</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.clone" title="Permalink to this definition">¶</a></dt>
+<dd><p>Deep copy the tree</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>device</strong> – device of output tree (could e.g. copy cuda tree to cpu)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.merge">
+<code class="sig-name descname"><span class="pre">merge</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="pre">frontier_sel=None</span></em>, <em class="sig-param"><span class="pre">op=&lt;built-in</span> <span class="pre">method</span> <span class="pre">mean</span> <span class="pre">of</span> <span class="pre">type</span> <span class="pre">object&gt;</span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.merge" title="Permalink to this definition">¶</a></dt>
+<dd><p>Merge leaves into selected ‘frontier’ nodes
+(i.e., nodes for which all children are leaves).
+Use shrink_to_fit() to recover memory freed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>frontier_sel</strong> – selector (int, mask, list of indices etc)
+for frontier nodes. In same order as reduce_frontier().
+Default all nodes.
+<em>Typical use</em>: use reduce_frontier(op=…) to determine
+conditions for merge, then pass
+mask or indices to merge().</p></li>
+<li><p><strong>op</strong> – reduction to combine child leaves into node.
+E.g. torch.max, torch.mean.
+Should take a positional argument <code class="code docutils literal notranslate"><span class="pre">x</span></code> (B, N, data_dim) and
+a named parameter <code class="code docutils literal notranslate"><span class="pre">dim</span></code> (always 1),
+and return a matrix of (B, your_out_dim).
+If a tuple is returned, uses first result.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.reduce_frontier">
+<code class="sig-name descname"><span class="pre">reduce_frontier</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="pre">op=&lt;built-in</span> <span class="pre">method</span> <span class="pre">mean</span> <span class="pre">of</span> <span class="pre">type</span> <span class="pre">object&gt;</span></em>, <em class="sig-param"><span class="pre">dim=None</span></em>, <em class="sig-param"><span class="pre">grad=False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.reduce_frontier" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reduce child leaf values for each ‘frontier’ node
+(i.e., nodes for which all children are leaves).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>op</strong> – reduction to combine child leaves into node.
+E.g. torch.max, torch.mean.
+Should take a positional argument <code class="code docutils literal notranslate"><span class="pre">x</span></code>
+(B, N, in_dim &lt;= data_dim) and
+a named parameter <code class="code docutils literal notranslate"><span class="pre">dim</span></code> (always 1),
+and return a matrix of (B, your_out_dim).</p></li>
+<li><p><strong>dim</strong> – dimension(s) of data to return, e.g. -1 returns
+last data dimension for all ‘frontier’ nodes</p></li>
+<li><p><strong>grad</strong> – if True, returns a tensor differentiable wrt tree data.
+Default False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>reduced tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.max_frontier">
+<code class="sig-name descname"><span class="pre">max_frontier</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.max_frontier" title="Permalink to this definition">¶</a></dt>
+<dd><p>Takes max over child leaf values for each ‘frontier’ node
+(i.e., nodes for which all children are leaves).
+This is simply reduce_frontier with torch.max
+operation, taking the returned values and discarding the
+argmax part.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dim</strong> – dimension(s) of data to return, e.g. -1 returns
+last data dimension for all ‘frontier’ nodes</p></li>
+<li><p><strong>grad</strong> – if True, returns a tensor differentiable wrt tree data.
+Default False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>reduced tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.diam_frontier">
+<code class="sig-name descname"><span class="pre">diam_frontier</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.diam_frontier" title="Permalink to this definition">¶</a></dt>
+<dd><p>Takes diameter over child leaf values for each ‘frontier’ node
+(i.e., nodes for which all children are leaves).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dim</strong> – dimension(s) of data to return, e.g. -1 returns
+last data dimension for all ‘frontier’ nodes</p></li>
+<li><p><strong>grad</strong> – if True, returns a tensor differentiable wrt tree data.
+Default False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>reduced tensor</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.refine">
+<code class="sig-name descname"><span class="pre">refine</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">repeats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.refine" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div><p>Refine each selected leaf node, respecting depth_limit.</p>
+<dl class="field-list simple">
+<dt class="field-odd">param repeats</dt>
+<dd class="field-odd"><p>int number of times to repeat refinement</p>
+</dd>
+<dt class="field-even">param sel</dt>
+<dd class="field-even"><p>(N, 4) node selector. Default selects all leaves.</p>
+</dd>
+<dt class="field-odd">return</dt>
+<dd class="field-odd"><p>True iff N3Tree.data parameter was resized, requiring
+optimizer reinitialization if you’re using an optimizer</p>
+</dd>
+</dl>
+</div></blockquote>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The parameter <code class="code docutils literal notranslate"><span class="pre">tree.data</span></code> can change due to refinement. If any refine() call returns True, please re-make any optimizers
+using tree.params().</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The selector <code class="code docutils literal notranslate"><span class="pre">sel</span></code> is assumed to contain unique leaf indices. If there are duplicates
+memory will be wasted. We do not dedup here for efficiency reasons.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.shrink_to_fit">
+<code class="sig-name descname"><span class="pre">shrink_to_fit</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.shrink_to_fit" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div><p>Shrink data &amp; buffers to tightly needed fit tree data,
+possibly dealing with fragmentation caused by merging.
+This is called by the save() function.</p>
+</div></blockquote>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Will change the nn.Parameter size (data), breaking optimizer!</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.max_depth">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">max_depth</span></code><a class="headerlink" href="#svox.N3Tree.max_depth" title="Permalink to this definition">¶</a></dt>
+<dd><p>Maximum tree depth - 1</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.accumulate_weights">
+<code class="sig-name descname"><span class="pre">accumulate_weights</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.accumulate_weights" title="Permalink to this definition">¶</a></dt>
+<dd><blockquote>
+<div><p>Begin weight accumulation</p>
+</div></blockquote>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">tree</span><span class="o">.</span><span class="n">accumulate_weights</span><span class="p">()</span> <span class="k">as</span> <span class="n">accum</span><span class="p">:</span>
+    <span class="o">...</span>
+
+<span class="c1"># (n_leaves) in same order as values etc.</span>
+<span class="n">accum</span> <span class="o">=</span> <span class="n">accum</span><span class="p">()</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.save">
+<code class="sig-name descname"><span class="pre">save</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shrink</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.save" title="Permalink to this definition">¶</a></dt>
+<dd><p>Save to from npz file</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – npz path</p></li>
+<li><p><strong>shrink</strong> – if True (default), applies shrink_to_fit before saving</p></li>
+<li><p><strong>compress</strong> – whether to compress the npz; may be slow</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.load">
+<em class="property"><span class="pre">classmethod</span> </em><code class="sig-name descname"><span class="pre">load</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.load" title="Permalink to this definition">¶</a></dt>
+<dd><p>Load from npz file</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> – npz path</p></li>
+<li><p><strong>map_location</strong> – device to put data</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.world2tree">
+<code class="sig-name descname"><span class="pre">world2tree</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">indices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.world2tree" title="Permalink to this definition">¶</a></dt>
+<dd><p>Scale world points to tree (<span class="math notranslate nohighlight">\([0,1]^3\)</span>)</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.tree2world">
+<code class="sig-name descname"><span class="pre">tree2world</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">indices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.tree2world" title="Permalink to this definition">¶</a></dt>
+<dd><p>Scale tree points (<span class="math notranslate nohighlight">\([0,1]^3\)</span>) to world accoording to center/radius</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="n-3-tree-view">
+<h2>N^3-Tree View<a class="headerlink" href="#n-3-tree-view" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="svox.N3TreeView">
+<em class="property"><span class="pre">class</span> </em><code class="sig-name descname"><span class="pre">N3TreeView</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt id="svox.N3TreeView.__init__">
+<code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initialize self.  See help(type(self)) for accurate signature.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.refine">
+<code class="sig-name descname"><span class="pre">refine</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">repeats</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.refine" title="Permalink to this definition">¶</a></dt>
+<dd><p>Refine selected leaves using tree.refine</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.values">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">values</span></code><a class="headerlink" href="#svox.N3TreeView.values" title="Permalink to this definition">¶</a></dt>
+<dd><p>Values of the selected leaves (autograd enabled)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves, data_dim) float32 note this is 2D even if key is int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.values_nograd">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">values_nograd</span></code><a class="headerlink" href="#svox.N3TreeView.values_nograd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Values of the selected leaves (no autograd)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves, data_dim) float32 note this is 2D even if key is int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.depths">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">depths</span></code><a class="headerlink" href="#svox.N3TreeView.depths" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a list of selected leaf depths in tree,
+in same order as values, corners.
+Root is at depth -1. Any children of
+root will have depth 0, etc.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves) int32</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.lengths">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">lengths</span></code><a class="headerlink" href="#svox.N3TreeView.lengths" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a list of selected leaf side lengths in tree (world dimensions),
+in same order as values, corners, depths</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves, 3) float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.lengths_local">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">lengths_local</span></code><a class="headerlink" href="#svox.N3TreeView.lengths_local" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a list of selected leaf side lengths in tree
+(local index <span class="math notranslate nohighlight">\([0, 1]^3\)</span>),
+in same order as values, corners, depths</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves) float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.corners">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">corners</span></code><a class="headerlink" href="#svox.N3TreeView.corners" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a list of selected leaf lower corners in tree
+(world coordinates),
+in same order as values, lengths, depths</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves, 3) float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.corners_local">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">corners_local</span></code><a class="headerlink" href="#svox.N3TreeView.corners_local" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get a list of selected leaf lower corners in tree
+(local index <span class="math notranslate nohighlight">\([0, 1]^3\)</span>),
+in same order as values, lengths, depths</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves, 3) float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.sample">
+<code class="sig-name descname"><span class="pre">sample</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_samples</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.sample" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sample n_samples uniform points in each selected leaf (world coordinates)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_samples</strong> – samples for each leaf</p></li>
+<li><p><strong>device</strong> – device to output random samples in</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>(n_leaves, n_samples, 3) float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.sample_local">
+<code class="sig-name descname"><span class="pre">sample_local</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_samples</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.sample_local" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sample n_samples uniform points in each selected leaf
+(local index <span class="math notranslate nohighlight">\([0, 1]^3\)</span>)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>(n_leaves, n_samples, 3) float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.aux">
+<code class="sig-name descname"><span class="pre">aux</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">arr</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.aux" title="Permalink to this definition">¶</a></dt>
+<dd><p>Index an auxiliary tree data array of size (capacity, N, N, N, Any)
+using this view</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.normal_">
+<code class="sig-name descname"><span class="pre">normal_</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mean</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">std</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.normal_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set all values to random normal</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mean</strong> – normal mean</p></li>
+<li><p><strong>std</strong> – normal std</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.uniform_">
+<code class="sig-name descname"><span class="pre">uniform_</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.uniform_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set all values to random uniform</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>min</strong> – interval min</p></li>
+<li><p><strong>max</strong> – interval max</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.clamp_">
+<code class="sig-name descname"><span class="pre">clamp_</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">min</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.clamp_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Clamp.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>min</strong> – clamp min value, None=disable</p></li>
+<li><p><strong>max</strong> – clamp max value, None=disable</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.relu_">
+<code class="sig-name descname"><span class="pre">relu_</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.relu_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Apply relu to all elements.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.sigmoid_">
+<code class="sig-name descname"><span class="pre">sigmoid_</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.sigmoid_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Apply sigmoid to all elements.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3TreeView.nan_to_num_">
+<code class="sig-name descname"><span class="pre">nan_to_num_</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inf_val</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">20000.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3TreeView.nan_to_num_" title="Permalink to this definition">¶</a></dt>
+<dd><p>Convert nans to 0.0 and infs to inf_val</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="differentiable-volume-renderer">
+<h2>Differentiable Volume Renderer<a class="headerlink" href="#differentiable-volume-renderer" title="Permalink to this headline">¶</a></h2>
+<dl class="py class">
+<dt id="svox.VolumeRenderer">
+<em class="property"><span class="pre">class</span> </em><code class="sig-name descname"><span class="pre">VolumeRenderer</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">background_brightness</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndc</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">svox.renderer.NDCConfig</span><span class="p"><span class="pre">]</span></span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">torch.nn.modules.module.Module</span></code></p>
+<p>Volume renderer</p>
+<dl class="py method">
+<dt id="svox.VolumeRenderer.__init__">
+<code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">background_brightness</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndc</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">svox.renderer.NDCConfig</span><span class="p"><span class="pre">]</span></span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Construct volume renderer associated with given N^3 tree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tree</strong> – N3Tree instance for rendering</p></li>
+<li><p><strong>step_size</strong> – float step size eps, added to each DDA step</p></li>
+<li><p><strong>background_brightness</strong> – float background brightness, 1.0 = white</p></li>
+<li><p><strong>ndc</strong> – NDCConfig, NDC coordinate configuration,
+namedtuple(width, height, focal).
+None = no NDC, use usual coordinates</p></li>
+<li><p><strong>min_comp</strong> – minimum SH/SG component to render</p></li>
+<li><p><strong>max_comp</strong> – maximum SH/SG component to render, -1=last</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.VolumeRenderer.forward">
+<code class="sig-name descname"><span class="pre">forward</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rays</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">svox.renderer.Rays</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cuda</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fast</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.forward" title="Permalink to this definition">¶</a></dt>
+<dd><p>Render a batch of rays. Differentiable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rays</strong> – namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)</p></li>
+<li><p><strong>rgba</strong> – (B, rgb_dim + 1)
+where <em>rgb_dim</em> is <code class="code docutils literal notranslate"><span class="pre">tree.data_dim</span> <span class="pre">-</span> <span class="pre">1</span></code> if
+<code class="code docutils literal notranslate"><span class="pre">data_format.format</span> <span class="pre">==</span> <span class="pre">RGBA</span></code>
+or <code class="code docutils literal notranslate"><span class="pre">data_format.basis_dim</span></code> else</p></li>
+<li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
+uses only PyTorch version.</p></li>
+<li><p><strong>fast</strong> – if True, enables faster evaluation, potentially leading
+to some loss of accuracy.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>(B, 3)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.VolumeRenderer.render_persp">
+<code class="sig-name descname"><span class="pre">render_persp</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">c2w</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">800</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">800</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fx</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1111.111</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cuda</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fast</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.render_persp" title="Permalink to this definition">¶</a></dt>
+<dd><p>Render a perspective image. Differentiable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>c2w</strong> – torch.Tensor (3, 4) or (4, 4) camera pose matrix (c2w)</p></li>
+<li><p><strong>width</strong> – int output image width</p></li>
+<li><p><strong>height</strong> – int output image height</p></li>
+<li><p><strong>fx</strong> – float output image focal length (x)</p></li>
+<li><p><strong>fy</strong> – float output image focal length (y), if not specified uses fx</p></li>
+<li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
+uses only PyTorch version.</p></li>
+<li><p><strong>fast</strong> – if True, enables faster evaluation, potentially leading
+to some loss of accuracy.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>(height, width, rgb_dim + 1)
+where <em>rgb_dim</em> is <code class="code docutils literal notranslate"><span class="pre">tree.data_dim</span> <span class="pre">-</span> <span class="pre">1</span></code> if
+<code class="code docutils literal notranslate"><span class="pre">data_format.format</span> <span class="pre">==</span> <span class="pre">DataFormat.RGBA</span></code>
+or <code class="code docutils literal notranslate"><span class="pre">data_format.basis_dim</span></code> else</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="ex_nerf.html" class="btn btn-neutral float-right" title="Example: Lego Bulldozer Rendering" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="quick.html" class="btn btn-neutral float-left" title="Quick Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &#169; Copyright 2021 Alex Yu.
+
+    </p>
+  </div>
+    
+    
+    
+    Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    
+    provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
