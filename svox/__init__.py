@@ -2,9 +2,7 @@
 CUDA accelerated PyTorch N^3 tree library.
 """
 
-#  [BSD 2-CLAUSE LICENSE]
-#
-#  Copyright SVOX Authors 2021
+#  Copyright 2021 PlenOctree Authors.
 #
 #  Redistribution and use in source and binary forms, with or without
 #  modification, are permitted provided that the following conditions are met:
