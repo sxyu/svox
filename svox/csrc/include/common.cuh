@@ -77,8 +77,10 @@ __device__ __inline__ scalar_t* query_single_from_root(
 
         const int32_t skip = child[node_id][u][v][w];
         if (skip == 0) {
-            if (node_id_out != nullptr)
-                *node_id_out = int64_t(node_id) * N * N * N + u * N * N + v * N + w;
+            if (node_id_out != nullptr) {
+                *node_id_out = node_id * int64_t(N * N * N) +
+                               u * int32_t(N * N) + v * int32_t(N) + w;
+            }
             return &data[node_id][u][v][w][0];
         }
         *cube_sz_out *= N;
