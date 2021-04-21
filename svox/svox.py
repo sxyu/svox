@@ -661,7 +661,7 @@ class N3Tree(nn.Module):
             "offset" : self.offset.cpu(),
             "depth_limit": self.depth_limit,
             "geom_resize_fact": self.geom_resize_fact,
-            "data": self.data.data.cpu().numpy().astype(np.float16)
+            "data": self.data.data.half().cpu().numpy()  # save CPU Memory
         }
         if self.data_format is not None:
             data["data_format"] = repr(self.data_format)
@@ -798,7 +798,7 @@ class N3Tree(nn.Module):
         Helper for increasing capacity
         """
         cap_needed = max(cap_needed, int(self.capacity * (self.geom_resize_fact - 1.0)))
-        may_oom = self.capacity + cap_needed > 1e6
+        may_oom = self.capacity + cap_needed > 1e7  # My CPU Memory is limited
         if may_oom:
             # Potential OOM prevention hack
             self.data = nn.Parameter(self.data.cpu())
