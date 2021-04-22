@@ -10,7 +10,7 @@ https://alexyu.net/plenoctrees
 
 Please also refer to the following repositories
 
-- NeRF-SH training and PlenOctree extraction: <https://github.com/sxyu/plenoctree> (to be released )
+- NeRF-SH training and PlenOctree extraction: <https://github.com/sxyu/plenoctree>
 - C++ volume renderer <https://github.com/sxyu/volrend>
 
 ## Installation
