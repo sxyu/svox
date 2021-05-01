@@ -384,7 +384,7 @@ class DataFormat:
         else:
             self.format = DataFormat.RGBA
             self.basis_dim = -1
-            self.data_dim = 4
+            self.data_dim = None
 
     def __repr__(self):
         if self.format == DataFormat.SH:

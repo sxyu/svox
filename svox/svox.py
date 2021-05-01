@@ -118,7 +118,7 @@ class N3Tree(nn.Module):
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
         self.data_format = DataFormat(data_format) if data_format is not None else None
-        if self.data_format is not None:
+        if self.data_format is not None and self.data_format.data_dim is not None:
             assert self.data_format.data_dim == data_dim, "data_dim invalid for given data format"
 
         if extra_data is not None:
