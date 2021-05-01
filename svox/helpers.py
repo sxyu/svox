@@ -145,7 +145,7 @@ class N3TreeView:
         :return: (n_leaves, 3) float
         """
         self._check_ver()
-        return (2.0 ** (-self.depths.float() - 1.0))[:, None] / self.tree.invradius
+        return (self.tree.N ** (-self.depths.float() - 1.0))[:, None] / self.tree.invradius
 
     @property
     def lengths_local(self):
@@ -157,7 +157,7 @@ class N3TreeView:
         :return: (n_leaves) float
         """
         self._check_ver()
-        return 2.0 ** (-self.depths.float() - 1.0)
+        return self.tree.N ** (-self.depths.float() - 1.0)
 
     @property
     def corners(self):
@@ -370,8 +370,11 @@ class DataFormat:
             nonalph_idx = nonalph_idx.index(False)
             self.basis_dim = int(txt[nonalph_idx:])
             format_type = txt[:nonalph_idx]
+            self.data_dim = 3 * self.basis_dim + 1
             if format_type == "SH":
                 self.format = DataFormat.SH
+                assert int(self.basis_dim ** 0.5) ** 2 == self.basis_dim, \
+                       "SH basis dim must be square number"
             elif format_type == "SG":
                 self.format = DataFormat.SG
             elif format_type == "ASG":
@@ -381,6 +384,7 @@ class DataFormat:
         else:
             self.format = DataFormat.RGBA
             self.basis_dim = -1
+            self.data_dim = 4
 
     def __repr__(self):
         if self.format == DataFormat.SH:

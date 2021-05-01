@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Welcome to the svox documentation &mdash; svox 0.2.26 documentation</title>
+  <title>Welcome to the svox documentation &mdash; svox 0.2.27 documentation</title>
   
 
   
@@ -171,7 +171,10 @@
             
   <div class="section" id="welcome-to-the-svox-documentation">
 <h1>Welcome to the svox documentation<a class="headerlink" href="#welcome-to-the-svox-documentation" title="Permalink to this headline">¶</a></h1>
-<p>This is a PlenOctree volume rendering implementation as a <em>PyTorch</em> extension with CUDA acceleration. The code is availble in <a class="reference external" href="https://github.com/sxyu/svox/">this repo</a>.
+<p>This is a PlenOctree volume rendering implementation as a PyTorch extension with CUDA acceleration.</p>
+<p>Note this only implements octree (or more generally N^3 tree) operations and differentiable volume rendering. It <em>does not</em> relate to NeRF training part of the project
+and does not involve a neural network.</p>
+<p>The code is available in <a class="reference external" href="https://github.com/sxyu/svox/">this repo</a>.
 This is part of the code release of</p>
 <div class="line-block">
 <div class="line">PlenOctrees for Real Time Rendering of Neural Radiance Fields</div>
@@ -191,6 +194,8 @@ This is part of the code release of</p>
 </pre></div>
 </div>
 <p><code class="code docutils literal notranslate"><span class="pre">data_dim</span></code> is the size of data stored at each leaf.</p>
+<p>Please see <a class="reference internal" href="svox.html#svox"><span class="std std-ref">Reference</span></a> for detailed per-method documentation and <a class="reference internal" href="quick.html#quick"><span class="std std-ref">Quick Guide</span></a> for a quick overview of features.
+This is the documentation of svox version:  0.2.27.</p>
 <div class="toctree-wrapper compound">
 <p class="caption"><span class="caption-text">Contents:</span></p>
 <ul>

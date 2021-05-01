@@ -1,7 +1,10 @@
+.. _quick:
+
 Quick Guide
 ==================
 
 Below I give a quick overview of some core functionality of svox to help get you started.
+Please see :ref:`svox` for detailed per-method documentation.
 To install the library, simply use :code:`pip install sxox`; you would of course need
 to install PyTorch first. 
 You will also need the CUDA runtime to compile the CUDA extension;
@@ -14,19 +17,29 @@ version as you have installed on your system.
 Construction
 -------------------------------
 
-We begin by importing the library:
+We begin by importing the library and constructing a tree:
 
 >>> import svox
->>> t=svox.N3Tree(N=<branch_factor>, map_location=<device>, radius=<radius>, center=<center>)
+>>> t=svox.N3Tree(data_dim=4, data_format="RGBA",
+                  center=[0.5, 0.5, 0.5], radius=0.5,
+                  N=2, map_location="cpu",
+                  init_refine=0, depth_limit=10,
+                  extra_data=None)
 >>> t.cuda()
 
-Here,
-:code:`N` is the N in :math:`N^3` tree.
-:code:`map_location` can be a string like 'cuda' and is where the tree's data will be stored.
-Finally, :code:`radius` and :code:`center` specify the transform of the tree in space,
-with :code:`radius` meaning the half-edge length of the bounding cube (1 float 
-or list of 3 floats for each axis)
-and :code:`center` specifying the center of the cube (list of 3 floats).
+* :code:`data_dim` is the size of data to store in each leaf, for example 4 for :code:`RGBA` data.
+* :code:`data_format`, a bit redundant, is the data format for rendering (only used for VolumeRenderer).
+  It can be :code:`RGBA`, :code:`SH#`, :code:`SG#`, or :code:`ASG#`, where # (basis_dim) is the dimensionality of the basis function.
+  This is somewhat redundant with data_dim.
+  data_dim should be :code:`basis_dim * 3 + 1` (Last item is always :math:`\sigma \in [0, \infty)`, the density).
+  For SH (spherical harmonics), basis_dim must be a square number at most 25. SG (spherical Gaussians) and ASG (anisotropic SG) require :code:`extra_data` field to render properly.
+* :code:`radius` and :code:`center` specify the transform of the tree in space, with :code:`radius` meaning the half-edge length of the bounding cube (1 float or list of 3 floats for each axis) and :code:`center` specifying the center of the cube (list of 3 floats).  By default cube is centered at :code:`[0.5, 0.5, 0.5]` with radius 0.5.
+* :code:`N` (optional, default 2) is the N in :math:`N^3` tree. Typically, put :code:`N=2` for an octree.
+* :code:`map_location` (optional, default cpu) can be a string like 'cuda' and is where the tree's data will be stored.
+* :code:`init_refine` specifies initial LOD of the tree: the initial leaf voxel size will be :code:`N^(init_refine + 1)`.
+* :code:`depth_limit` is a utility for limiting the maximum depth of any tree leaf after refinement.  Note that the root is at depth -1, which may be a bit confusing; initially the tree has maximum depth 1 and :code:`NxNxN` leaves.
+* :code:`extra_data` for SG, basis_dim x 4 matrix of variance/mean (3). For ASG, data_dim x 11 matrix.
+  Currently, optimizing wrt this matrix is not supported, so the parameters should be pre-determined.
 
 :code:`svox.N3Tree` is a PyTorch module and 
 usual operations such as :code:`.parameters()` or :code:`.cuda()` can be used.
@@ -111,12 +124,25 @@ The following code renders a perspective image:
 >>> camera = # some [4, 4] camera pose matrix
 >>> ren.render_persp(camera, width=width, height=height, fx=fx) # Get a perspective image
 
+Note the renderer need not be updated if the tree is modified.
+The renderer will use the tree's :code:`data_format` field:
+one of :code:`RGBA`, :code:`SH#`, :code:`SG#`, or :code:`ASG#`, where # (basis_dim) is the dimensionality of the basis function.
+For SH, this must be a square number at most 25.
+The last dimension is always used as density :math:`\sigma \in [0, \infty)`, where the value is clipped to 0 while rendering if negative.
+The volume rendering formula is as in NeRF:
+
+.. math::
+    \mathbf{C} = \sum_{i=1}^n \left[\prod_{j=1}^{i-1}\exp(-\delta_j \sigma_j)\right]  \left[1 - \exp(-\delta_i \sigma_i)\right] \mathbf{c}_i(\mathbf{d})
+
+Where :math:`\delta_i, \sigma_i, \mathbf{c}_i` are segment i's length, density, and color, respectively. :math:`\mathbf{d}` is the viewing direction
+and :math:`\mathbf{C}` is the final output color.
+
 Also you can render rays directly, by using the forward method of VolumeRenderer:
 
 >>> ray = svox.Rays(origins = ... dirs=..., viewdirs=...)
 >>> ren(ray)
 
-You can pass fast=True to either render_persp or this forward method
+You can pass :code:`fast=True` to either render_persp or this forward method
 to allow fast rendering (with early stopping) potentially at the cost of quality.
 
 These functions are backed by CUDA analytic derivatives.
@@ -130,6 +156,10 @@ Finally, NDC views are also internally supported in render_persp.
 To use this features, pass :code:`ndc=svox.NDCConfig(width=..., heigh=..., focal=...)`
 to the VolumeRenderer constructor.
 
+**Troubleshooting**: If you get an error about a tensor being non-contiguous,
+please make sure it is contiguous using
+:code:`.contiguous()`, for example
+:code:`svox.Rays(origins=r[:, :3].contiguous(), dirs=r[:, 3:6].contiguous(), viewdirs=r[:, 3:6].contiguous())`.
 
 .. _leaf_level_acc:
 
@@ -169,4 +199,4 @@ for all rays which every hit the voxel within the context.
 You can use it as follows:
 
 >>> tree[accum > 1.0].refine()
->>> tree[accum < 1.0, ] += 1
+>>> tree[accum < 1.0] += 1

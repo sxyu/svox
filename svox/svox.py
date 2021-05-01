@@ -66,7 +66,7 @@ class N3Tree(nn.Module):
     please re-make any optimizers
     """
     def __init__(self, N=2, data_dim=4, depth_limit=10,
-            init_reserve=1, init_refine=0, geom_resize_fact=1.5,
+            init_reserve=1, init_refine=0, geom_resize_fact=1.0,
             radius=0.5, center=[0.5, 0.5, 0.5],
             data_format="RGBA",
             extra_data=None,
@@ -118,6 +118,8 @@ class N3Tree(nn.Module):
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
         self.data_format = DataFormat(data_format) if data_format is not None else None
+        if self.data_format is not None:
+            assert self.data_format.data_dim == data_dim, "data_dim invalid for given data format"
 
         if extra_data is not None:
             assert isinstance(extra_data, torch.Tensor)

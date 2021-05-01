@@ -164,7 +164,7 @@ class VolumeRenderer(nn.Module):
         :param rgba: (B, rgb_dim + 1)
                 where *rgb_dim* is :code:`tree.data_dim - 1` if
                 :code:`data_format.format == RGBA`
-                or :code:`data_format.basis_dim` else
+                or :code:`data_format.basis_dim * 3` else
         :param cuda: whether to use CUDA kernel if available. If false,
                      uses only PyTorch version.
         :param fast: if True, enables faster evaluation, potentially leading

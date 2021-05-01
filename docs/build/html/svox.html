@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Reference &mdash; svox 0.2.26 documentation</title>
+  <title>Reference &mdash; svox 0.2.27 documentation</title>
   
 
   
@@ -172,7 +172,7 @@
            <div itemprop="articleBody">
             
   <div class="section" id="reference">
-<h1>Reference<a class="headerlink" href="#reference" title="Permalink to this headline">¶</a></h1>
+<span id="svox"></span><h1>Reference<a class="headerlink" href="#reference" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="n-3-tree">
 <h2>N^3-Tree<a class="headerlink" href="#n-3-tree" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
@@ -748,7 +748,7 @@ None = no NDC, use usual coordinates</p></li>
 <li><p><strong>rgba</strong> – (B, rgb_dim + 1)
 where <em>rgb_dim</em> is <code class="code docutils literal notranslate"><span class="pre">tree.data_dim</span> <span class="pre">-</span> <span class="pre">1</span></code> if
 <code class="code docutils literal notranslate"><span class="pre">data_format.format</span> <span class="pre">==</span> <span class="pre">RGBA</span></code>
-or <code class="code docutils literal notranslate"><span class="pre">data_format.basis_dim</span></code> else</p></li>
+or <code class="code docutils literal notranslate"><span class="pre">data_format.basis_dim</span> <span class="pre">*</span> <span class="pre">3</span></code> else</p></li>
 <li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
 uses only PyTorch version.</p></li>
 <li><p><strong>fast</strong> – if True, enables faster evaluation, potentially leading

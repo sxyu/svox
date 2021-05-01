@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Quick Guide &mdash; svox 0.2.26 documentation</title>
+  <title>Quick Guide &mdash; svox 0.2.27 documentation</title>
   
 
   
@@ -172,8 +172,9 @@
            <div itemprop="articleBody">
             
   <div class="section" id="quick-guide">
-<h1>Quick Guide<a class="headerlink" href="#quick-guide" title="Permalink to this headline">¶</a></h1>
+<span id="quick"></span><h1>Quick Guide<a class="headerlink" href="#quick-guide" title="Permalink to this headline">¶</a></h1>
 <p>Below I give a quick overview of some core functionality of svox to help get you started.
+Please see <a class="reference internal" href="svox.html#svox"><span class="std std-ref">Reference</span></a> for detailed per-method documentation.
 To install the library, simply use <code class="code docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">sxox</span></code>; you would of course need
 to install PyTorch first.
 You will also need the CUDA runtime to compile the CUDA extension;
@@ -183,19 +184,31 @@ first time a CUDA-capable operation is used.</p>
 version as you have installed on your system.</p>
 <div class="section" id="construction">
 <h2>Construction<a class="headerlink" href="#construction" title="Permalink to this headline">¶</a></h2>
-<p>We begin by importing the library:</p>
+<p>We begin by importing the library and constructing a tree:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">svox</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">=</span><span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="p">(</span><span class="n">N</span><span class="o">=&lt;</span><span class="n">branch_factor</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=&lt;</span><span class="n">device</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">radius</span><span class="o">=&lt;</span><span class="n">radius</span><span class="o">&gt;</span><span class="p">,</span> <span class="n">center</span><span class="o">=&lt;</span><span class="n">center</span><span class="o">&gt;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">=</span><span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="p">(</span><span class="n">data_dim</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">data_format</span><span class="o">=</span><span class="s2">&quot;RGBA&quot;</span><span class="p">,</span>
+<span class="go">                  center=[0.5, 0.5, 0.5], radius=0.5,</span>
+<span class="go">                  N=2, map_location=&quot;cpu&quot;,</span>
+<span class="go">                  init_refine=0, depth_limit=10,</span>
+<span class="go">                  extra_data=None)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">.</span><span class="n">cuda</span><span class="p">()</span>
 </pre></div>
 </div>
-<p>Here,
-<code class="code docutils literal notranslate"><span class="pre">N</span></code> is the N in <span class="math notranslate nohighlight">\(N^3\)</span> tree.
-<code class="code docutils literal notranslate"><span class="pre">map_location</span></code> can be a string like ‘cuda’ and is where the tree’s data will be stored.
-Finally, <code class="code docutils literal notranslate"><span class="pre">radius</span></code> and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specify the transform of the tree in space,
-with <code class="code docutils literal notranslate"><span class="pre">radius</span></code> meaning the half-edge length of the bounding cube (1 float
-or list of 3 floats for each axis)
-and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specifying the center of the cube (list of 3 floats).</p>
+<ul class="simple">
+<li><p><code class="code docutils literal notranslate"><span class="pre">data_dim</span></code> is the size of data to store in each leaf, for example 4 for <code class="code docutils literal notranslate"><span class="pre">RGBA</span></code> data.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">data_format</span></code>, a bit redundant, is the data format for rendering (only used for VolumeRenderer).
+It can be <code class="code docutils literal notranslate"><span class="pre">RGBA</span></code>, <code class="code docutils literal notranslate"><span class="pre">SH#</span></code>, <code class="code docutils literal notranslate"><span class="pre">SG#</span></code>, or <code class="code docutils literal notranslate"><span class="pre">ASG#</span></code>, where # (basis_dim) is the dimensionality of the basis function.
+This is somewhat redundant with data_dim.
+data_dim should be <code class="code docutils literal notranslate"><span class="pre">basis_dim</span> <span class="pre">*</span> <span class="pre">3</span> <span class="pre">+</span> <span class="pre">1</span></code> (Last item is always <span class="math notranslate nohighlight">\(\sigma \in [0, \infty)\)</span>, the density).
+For SH (spherical harmonics), basis_dim must be a square number at most 25. SG (spherical Gaussians) and ASG (anisotropic SG) require <code class="code docutils literal notranslate"><span class="pre">extra_data</span></code> field to render properly.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">radius</span></code> and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specify the transform of the tree in space, with <code class="code docutils literal notranslate"><span class="pre">radius</span></code> meaning the half-edge length of the bounding cube (1 float or list of 3 floats for each axis) and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specifying the center of the cube (list of 3 floats).  By default cube is centered at <code class="code docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></code> with radius 0.5.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">N</span></code> (optional, default 2) is the N in <span class="math notranslate nohighlight">\(N^3\)</span> tree. Typically, put <code class="code docutils literal notranslate"><span class="pre">N=2</span></code> for an octree.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">map_location</span></code> (optional, default cpu) can be a string like ‘cuda’ and is where the tree’s data will be stored.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">init_refine</span></code> specifies initial LOD of the tree: the initial leaf voxel size will be <code class="code docutils literal notranslate"><span class="pre">N^(init_refine</span> <span class="pre">+</span> <span class="pre">1)</span></code>.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">depth_limit</span></code> is a utility for limiting the maximum depth of any tree leaf after refinement.  Note that the root is at depth -1, which may be a bit confusing; initially the tree has maximum depth 1 and <code class="code docutils literal notranslate"><span class="pre">NxNxN</span></code> leaves.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">extra_data</span></code> for SG, basis_dim x 4 matrix of variance/mean (3). For ASG, data_dim x 11 matrix.
+Currently, optimizing wrt this matrix is not supported, so the parameters should be pre-determined.</p></li>
+</ul>
 <p><code class="code docutils literal notranslate"><span class="pre">svox.N3Tree</span></code> is a PyTorch module and
 usual operations such as <code class="code docutils literal notranslate"><span class="pre">.parameters()</span></code> or <code class="code docutils literal notranslate"><span class="pre">.cuda()</span></code> can be used.
 The forward method of the N3Tree class takes a batch of points <code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">3)</span></code> and returns
@@ -278,12 +291,22 @@ The following code renders a perspective image:</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ren</span><span class="o">.</span><span class="n">render_persp</span><span class="p">(</span><span class="n">camera</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="n">width</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="n">height</span><span class="p">,</span> <span class="n">fx</span><span class="o">=</span><span class="n">fx</span><span class="p">)</span> <span class="c1"># Get a perspective image</span>
 </pre></div>
 </div>
+<p>Note the renderer need not be updated if the tree is modified.
+The renderer will use the tree’s <code class="code docutils literal notranslate"><span class="pre">data_format</span></code> field:
+one of <code class="code docutils literal notranslate"><span class="pre">RGBA</span></code>, <code class="code docutils literal notranslate"><span class="pre">SH#</span></code>, <code class="code docutils literal notranslate"><span class="pre">SG#</span></code>, or <code class="code docutils literal notranslate"><span class="pre">ASG#</span></code>, where # (basis_dim) is the dimensionality of the basis function.
+For SH, this must be a square number at most 25.
+The last dimension is always used as density <span class="math notranslate nohighlight">\(\sigma \in [0, \infty)\)</span>, where the value is clipped to 0 while rendering if negative.
+The volume rendering formula is as in NeRF:</p>
+<div class="math notranslate nohighlight">
+\[\mathbf{C} = \sum_{i=1}^n \left[\prod_{j=1}^{i-1}\exp(-\delta_j \sigma_j)\right]  \left[1 - \exp(-\delta_i \sigma_i)\right] \mathbf{c}_i(\mathbf{d})\]</div>
+<p>Where <span class="math notranslate nohighlight">\(\delta_i, \sigma_i, \mathbf{c}_i\)</span> are segment i’s length, density, and color, respectively. <span class="math notranslate nohighlight">\(\mathbf{d}\)</span> is the viewing direction
+and <span class="math notranslate nohighlight">\(\mathbf{C}\)</span> is the final output color.</p>
 <p>Also you can render rays directly, by using the forward method of VolumeRenderer:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ray</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">Rays</span><span class="p">(</span><span class="n">origins</span> <span class="o">=</span> <span class="o">...</span> <span class="n">dirs</span><span class="o">=...</span><span class="p">,</span> <span class="n">viewdirs</span><span class="o">=...</span><span class="p">)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">ren</span><span class="p">(</span><span class="n">ray</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>You can pass fast=True to either render_persp or this forward method
+<p>You can pass <code class="code docutils literal notranslate"><span class="pre">fast=True</span></code> to either render_persp or this forward method
 to allow fast rendering (with early stopping) potentially at the cost of quality.</p>
 <p>These functions are backed by CUDA analytic derivatives.
 For example,</p>
@@ -295,6 +318,10 @@ For example,</p>
 <p>Finally, NDC views are also internally supported in render_persp.
 To use this features, pass <code class="code docutils literal notranslate"><span class="pre">ndc=svox.NDCConfig(width=...,</span> <span class="pre">heigh=...,</span> <span class="pre">focal=...)</span></code>
 to the VolumeRenderer constructor.</p>
+<p><strong>Troubleshooting</strong>: If you get an error about a tensor being non-contiguous,
+please make sure it is contiguous using
+<code class="code docutils literal notranslate"><span class="pre">.contiguous()</span></code>, for example
+<code class="code docutils literal notranslate"><span class="pre">svox.Rays(origins=r[:,</span> <span class="pre">:3].contiguous(),</span> <span class="pre">dirs=r[:,</span> <span class="pre">3:6].contiguous(),</span> <span class="pre">viewdirs=r[:,</span> <span class="pre">3:6].contiguous())</span></code>.</p>
 </div>
 <div class="section" id="advanced-leaf-level-accessors">
 <span id="leaf-level-acc"></span><h2>Advanced Leaf-level Accessors<a class="headerlink" href="#advanced-leaf-level-accessors" title="Permalink to this headline">¶</a></h2>
@@ -331,7 +358,7 @@ Each entry is equal to the sum of all volume rendering weights
 for all rays which every hit the voxel within the context.
 You can use it as follows:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">accum</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">]</span><span class="o">.</span><span class="n">refine</span><span class="p">()</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">accum</span> <span class="o">&lt;</span> <span class="mf">1.0</span><span class="p">,</span> <span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">accum</span> <span class="o">&lt;</span> <span class="mf">1.0</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
 </pre></div>
 </div>
 </div>
