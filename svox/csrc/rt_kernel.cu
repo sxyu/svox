@@ -444,7 +444,7 @@ __device__ __inline__ void trace_ray_backward(
                     light_intensity *= att;
                     accum -= weight * total_color;
                     atomicAdd(
-                            &grad_tree_val[out_data_dim],
+                            &grad_tree_val[data_dim - 1],
                             delta_t * delta_scale * (
                                 total_color * light_intensity - accum)
                             );
