@@ -75,7 +75,8 @@ class N3Tree(nn.Module):
         Construct N^3 Tree
 
         :param N: int branching factor N
-        :param data_dim: int size of data stored at each leaf (NEW in 0.2.28: optional if data_format other than RGBA is given)
+        :param data_dim: int size of data stored at each leaf (NEW in 0.2.28: optional if data_format other than RGBA is given).
+                        If data_format = "RGBA" or empty, this defaults to 4.
         :param depth_limit: int maximum depth  of tree to stop branching/refining
                             Note that the root is at depth -1.
                             Size N^[-10] leaves (1/1024 for octree) for example
@@ -932,7 +933,7 @@ class N3Tree(nn.Module):
             else:
                 assert self.data_format.data_dim == self.data_dim, "data_dim invalid for given data format"
         elif self.data_dim is None:
-            warn("Using legacy default data_dim 4, please either specify data_format or data_dim")
+            # Legacy default
             self.data_dim = 4
 
 
