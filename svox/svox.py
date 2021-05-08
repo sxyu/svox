@@ -65,7 +65,7 @@ class N3Tree(nn.Module):
     shrink_to_fit() call returns True,
     please re-make any optimizers
     """
-    def __init__(self, N=2, data_dim=4, depth_limit=10,
+    def __init__(self, N=2, data_dim=None, depth_limit=10,
             init_reserve=1, init_refine=0, geom_resize_fact=1.0,
             radius=0.5, center=[0.5, 0.5, 0.5],
             data_format="RGBA",
@@ -75,14 +75,20 @@ class N3Tree(nn.Module):
         Construct N^3 Tree
 
         :param N: int branching factor N
-        :param data_dim: int size of data stored at each leaf
-        :param depth_limit: int maximum depth of tree to stop branching/refining
+        :param data_dim: int size of data stored at each leaf (NEW in 0.2.28: optional if data_format other than RGBA is given)
+        :param depth_limit: int maximum depth  of tree to stop branching/refining
+                            Note that the root is at depth -1.
+                            Size N^[-10] leaves (1/1024 for octree) for example
+                            are depth 9. :code:`max_depth` applies to the same
+                            depth values.
         :param init_reserve: int amount of nodes to reserve initially
         :param init_refine: int number of times to refine entire tree initially
+                            inital resolution will be [N^(init_refine + 1)]^3.
+                            initial max_depth will be init_refine.
         :param geom_resize_fact: float geometric resizing factor
         :param radius: float or list, 1/2 side length of cube (possibly in each dim)
         :param center: list center of space
-        :param data_format: a string to indicate the data format
+        :param data_format: a string to indicate the data format. RGBA | SH# | SG# | ASG#
         :param extra_data: extra data to include with tree
         :param map_location: str device to put data
 
@@ -91,14 +97,18 @@ class N3Tree(nn.Module):
         assert N >= 2
         assert depth_limit >= 0
         self.N : int = N
+
+        self.data_format = DataFormat(data_format) if data_format is not None else None
         self.data_dim : int = data_dim
+        self._maybe_auto_data_dim()
+        del data_dim
 
         if init_refine > 0:
             for i in range(1, init_refine + 1):
                 init_reserve += (N ** i) ** 3
 
         self.register_parameter("data", nn.Parameter(
-            torch.zeros(init_reserve, N, N, N, data_dim, device=map_location)))
+            torch.zeros(init_reserve, N, N, N, self.data_dim, device=map_location)))
         self.register_buffer("child", torch.zeros(
             init_reserve, N, N, N, dtype=torch.int32, device=map_location))
         self.register_buffer("parent_depth", torch.zeros(
@@ -117,9 +127,6 @@ class N3Tree(nn.Module):
 
         self.depth_limit = depth_limit
         self.geom_resize_fact = geom_resize_fact
-        self.data_format = DataFormat(data_format) if data_format is not None else None
-        if self.data_format is not None and self.data_format.data_dim is not None:
-            assert self.data_format.data_dim == data_dim, "data_dim invalid for given data format"
 
         if extra_data is not None:
             assert isinstance(extra_data, torch.Tensor)
@@ -308,6 +315,53 @@ class N3Tree(nn.Module):
         else:
             t2.data = nn.Parameter(copy_to_device(self.data.data[..., sel_indices].contiguous()))
         return t2
+
+    def expand(self, data_format, data_dim=None, remap=None):
+        """
+        Modify the size of the data stored at the octree leaves.
+        :param data_format: new data format, RGBA | SH# | SG# | ASG#
+        :param data_dim: data dimension; inferred from data_format by default
+                only needed if data_format is RGBA.
+        :param remap: mapping of old data to new data. For each leaf, we will do
+                :code:`new_data[remap] = old_data`. By default,
+                this will be inferred automatically (maps basis functions
+                in the correct way).
+        """
+        assert isinstance(data_format, str), "Please specify valid data format"
+        old_data_format = self.data_format
+        old_data_dim = self.data_dim
+        self.data_format = DataFormat(data_format) if data_format is not None else None
+        self.data_dim = data_dim
+        self._maybe_auto_data_dim()
+        del data_dim
+        assert self.data_dim >= old_data_dim, "Cannot expand to something smaller"
+
+        if remap is None:
+            sigma_arr = torch.tensor([self.data_dim-1])
+            if old_data_format is None or self.data_format.format == DataFormat.RGBA:
+                remap = torch.cat([torch.arange(old_data_dim - 1), sigma_arr])
+            else:
+                assert self.data_format.basis_dim >= 1, \
+                       "Please manually specify data_dim for expand()"
+                old_basis_dim = old_data_format.basis_dim
+                if old_basis_dim < 0:
+                    old_basis_dim = 1
+                shift = self.data_format.basis_dim
+                arr = torch.arange(old_basis_dim)
+                remap = torch.cat([arr, shift + arr, 2 * shift + arr, sigma_arr])
+
+        may_oom = self.data.numel() > 8e9
+        if may_oom:
+            # Potential OOM prevention hack
+            self.data = nn.Parameter(self.data.cpu())
+        tmp_data = torch.zeros(
+            (*self.data.data.shape[:-1], self.data_dim), device=self.data.device)
+        tmp_data[..., remap] = self.data.data
+        if may_oom:
+            self.data = nn.Parameter(tmp_data.to(device=self.child.device))
+        else:
+            self.data = nn.Parameter(tmp_data)
+
 
     def clone(self, device=None):
         """
@@ -871,6 +925,16 @@ class N3Tree(nn.Module):
                     self._weight_accum is not None else torch.empty(
                             0, device=self.data.device)
         return tree_spec
+
+    def _maybe_auto_data_dim(self):
+        if self.data_format is not None and self.data_format.data_dim is not None:
+            if self.data_dim is None:
+                self.data_dim = self.data_format.data_dim
+            else:
+                assert self.data_format.data_dim == self.data_dim, "data_dim invalid for given data format"
+        elif self.data_dim is None:
+            warn("Using legacy default data_dim 4, please either specify data_format or data_dim")
+            self.data_dim = 4
 
 
 # Redirect functions to N3TreeView so you can do tree.depths instead of tree[:].depths

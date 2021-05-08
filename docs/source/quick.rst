@@ -28,6 +28,8 @@ We begin by importing the library and constructing a tree:
 >>> t.cuda()
 
 * :code:`data_dim` is the size of data to store in each leaf, for example 4 for :code:`RGBA` data.
+  Since 0.2.28: this is optional if :code:`data_format` is something other than :code:`RGBA`.
+  Since 0.2.27: an error is thrown if this is incompatible with :code:`data_format`.
 * :code:`data_format`, a bit redundant, is the data format for rendering (only used for VolumeRenderer).
   It can be :code:`RGBA`, :code:`SH#`, :code:`SG#`, or :code:`ASG#`, where # (basis_dim) is the dimensionality of the basis function.
   This is somewhat redundant with data_dim.

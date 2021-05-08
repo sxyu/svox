@@ -82,7 +82,12 @@ class N3TreeView:
         self._check_ver()
         if isinstance(value, N3TreeView):
             value = value.values_nograd
-        self.tree.data.data[self.key] = value
+        if self._require_subindex():
+            tmp = self.tree.data.data[self.key[:-1]]
+            tmp[..., self.key[-1]] = value
+            self.tree.data.data[self.key[:-1]] = tmp
+        else:
+            self.tree.data.data[self.key] = value
 
     def refine(self, repeats=1):
         """
@@ -100,7 +105,10 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        ret = self.tree.data[self.key]
+        if self._require_subindex():
+            ret = self.tree.data[self.key[:-1]][..., self.key[-1]]
+        else:
+            ret = self.tree.data[self.key]
         return ret[0] if self.single_key else ret
 
     @property
@@ -111,7 +119,10 @@ class N3TreeView:
         :return: (n_leaves, data_dim) float32 note this is 2D even if key is int
         """
         self._check_ver()
-        ret = self.tree.data.data[self.key]
+        if self._require_subindex():
+            ret = self.tree.data.data[self.key[:-1]][..., self.key[-1]]
+        else:
+            ret = self.tree.data[self.key]
         return ret[0] if self.single_key else ret
 
     @property
@@ -225,61 +236,68 @@ class N3TreeView:
         Index an auxiliary tree data array of size (capacity, N, N, N, Any)
         using this view
         """
-        return arr[self.key]
+        if self._require_subindex():
+            return arr[self.key[:-1]][..., self.key[-1]]
+        else:
+            return arr[self.key]
 
     # In-place modification helpers
     def normal_(self, mean=0.0, std=1.0):
         """
         Set all values to random normal
+        FIXME: inefficient
 
         :param mean: normal mean
         :param std: normal std
 
         """
         self._check_ver()
-        self.tree.data.data[self.key] = torch.randn_like(
-                self.tree.data.data[self.key]) * std + mean
+        self.set(torch.randn_like(self.values_nograd) * std + mean)
 
     def uniform_(self, min=0.0, max=1.0):
         """
         Set all values to random uniform
+        FIXME: inefficient
 
         :param min: interval min
         :param max: interval max
 
         """
         self._check_ver()
-        self.tree.data.data[self.key] = torch.rand_like(
-                self.tree.data.data[self.key]) * (max - min) + min
+        self.set(torch.rand_like(self.values_nograd) * (max - min) + min)
 
     def clamp_(self, min=None, max=None):
         """
         Clamp.
+        FIXME: inefficient
 
         :param min: clamp min value, None=disable
         :param max: clamp max value, None=disable
 
         """
         self._check_ver()
-        self.tree.data.data[self.key] = self.tree.data.data[self.key].clamp(min, max)
+        self.set(torch.clamp(self.values_nograd, min, max))
 
     def relu_(self):
         """
         Apply relu to all elements.
+        FIXME: inefficient
         """
         self._check_ver()
-        self.tree.data.data[self.key] = torch.relu(self.tree.data.data[self.key])
+        self.set(torch.relu(self.values_nograd))
 
     def sigmoid_(self):
         """
         Apply sigmoid to all elements.
+        FIXME: inefficient
         """
         self._check_ver()
-        self.tree.data.data[self.key] = torch.sigmoid(self.tree.data.data[self.key])
+        self.set(torch.sigmoid(self.values_nograd))
 
     def nan_to_num_(self, inf_val=2e4):
         """
         Convert nans to 0.0 and infs to inf_val
+        FIXME: inefficient
         """
         data = self.tree.data.data[self.key]
         data[torch.isnan(data)] = 0.0
@@ -290,7 +308,7 @@ class N3TreeView:
 
     def __setitem__(self, key, value):
         """
-        Warning: inefficient impl
+        FIXME: inefficient
         """
         val = self.values_nograd
         val.__setitem__(key, value)
@@ -298,6 +316,10 @@ class N3TreeView:
 
     def _indexer(self):
         return torch.stack(self.key[:4], dim=-1)
+
+    def _require_subindex(self):
+        return isinstance(self.key, tuple) and len(self.key) == 5 and \
+            not isinstance(self.key[-1], slice) and not isinstance(self.key[-1], int)
 
     def _unique_node_key(self):
         if self._packed_ids is None:
@@ -370,11 +392,13 @@ class DataFormat:
             nonalph_idx = nonalph_idx.index(False)
             self.basis_dim = int(txt[nonalph_idx:])
             format_type = txt[:nonalph_idx]
+            assert self.basis_dim > 0, "data_format basis_dim must be positive"
             self.data_dim = 3 * self.basis_dim + 1
             if format_type == "SH":
                 self.format = DataFormat.SH
                 assert int(self.basis_dim ** 0.5) ** 2 == self.basis_dim, \
                        "SH basis dim must be square number"
+                assert self.basis_dim <= 25, "SH only supported up to basis_dim 25"
             elif format_type == "SG":
                 self.format = DataFormat.SG
             elif format_type == "ASG":

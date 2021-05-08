@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Quick Guide &mdash; svox 0.2.27 documentation</title>
+  <title>Quick Guide &mdash; svox 0.2.28 documentation</title>
   
 
   
@@ -195,7 +195,9 @@ version as you have installed on your system.</p>
 </pre></div>
 </div>
 <ul class="simple">
-<li><p><code class="code docutils literal notranslate"><span class="pre">data_dim</span></code> is the size of data to store in each leaf, for example 4 for <code class="code docutils literal notranslate"><span class="pre">RGBA</span></code> data.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">data_dim</span></code> is the size of data to store in each leaf, for example 4 for <code class="code docutils literal notranslate"><span class="pre">RGBA</span></code> data.
+Since 0.2.28: this is optional if <code class="code docutils literal notranslate"><span class="pre">data_format</span></code> is something other than <code class="code docutils literal notranslate"><span class="pre">RGBA</span></code>.
+Since 0.2.27: an error is thrown if this is incompatible with <code class="code docutils literal notranslate"><span class="pre">data_format</span></code>.</p></li>
 <li><p><code class="code docutils literal notranslate"><span class="pre">data_format</span></code>, a bit redundant, is the data format for rendering (only used for VolumeRenderer).
 It can be <code class="code docutils literal notranslate"><span class="pre">RGBA</span></code>, <code class="code docutils literal notranslate"><span class="pre">SH#</span></code>, <code class="code docutils literal notranslate"><span class="pre">SG#</span></code>, or <code class="code docutils literal notranslate"><span class="pre">ASG#</span></code>, where # (basis_dim) is the dimensionality of the basis function.
 This is somewhat redundant with data_dim.
