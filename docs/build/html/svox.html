@@ -223,26 +223,17 @@ initial max_depth will be init_refine.</p></li>
 <dl class="py method">
 <dt id="svox.N3Tree.set">
 <code class="sig-name descname"><span class="pre">set</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cuda</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.set" title="Permalink to this definition">¶</a></dt>
-<dd><blockquote>
-<div><p>Set tree values,</p>
+<dd><p>Set tree values,</p>
 <dl class="field-list simple">
-<dt class="field-odd">param indices</dt>
-<dd class="field-odd"><p>torch.Tensor (Q, 3)</p>
-</dd>
-<dt class="field-even">param values</dt>
-<dd class="field-even"><p>torch.Tensor (Q, K)</p>
-</dd>
-<dt class="field-odd">param cuda</dt>
-<dd class="field-odd"><p>whether to use CUDA kernel if available. If false,
-uses only PyTorch version.</p>
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>indices</strong> – torch.Tensor (Q, 3)</p></li>
+<li><p><strong>values</strong> – torch.Tensor (Q, K)</p></li>
+<li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
+uses only PyTorch version.</p></li>
+</ul>
 </dd>
 </dl>
-</div></blockquote>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>Beware: If multiple indices point to same leaf node,
-only one of them will be taken</p>
-</div>
 </dd></dl>
 
 <dl class="py method">
@@ -300,16 +291,18 @@ E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only</p>
 <dl class="py method">
 <dt id="svox.N3Tree.expand">
 <code class="sig-name descname"><span class="pre">expand</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_format</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remap</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.expand" title="Permalink to this definition">¶</a></dt>
-<dd><p>Modify the size of the data stored at the octree leaves.
-:param data_format new data format, RGBA | SH# | SG# | ASG#
-:param data_dim data dimension; inferred from data_format by default</p>
-<blockquote>
-<div><p>only needed if data_format is RGBA.</p>
-</div></blockquote>
-<dl class="simple">
-<dt>:param remap mapping of old data to new data. For each leaf, we will do</dt><dd><p><code class="code docutils literal notranslate"><span class="pre">new_data[remap]</span> <span class="pre">=</span> <span class="pre">old_data</span></code>. By default,
+<dd><p>Modify the size of the data stored at the octree leaves.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_format</strong> – new data format, RGBA | SH# | SG# | ASG#</p></li>
+<li><p><strong>data_dim</strong> – data dimension; inferred from data_format by default
+only needed if data_format is RGBA.</p></li>
+<li><p><strong>remap</strong> – mapping of old data to new data. For each leaf, we will do
+<code class="code docutils literal notranslate"><span class="pre">new_data[remap]</span> <span class="pre">=</span> <span class="pre">old_data</span></code>. By default,
 this will be inferred automatically (maps basis functions
-in the correct way).</p>
+in the correct way).</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>

@@ -152,9 +152,6 @@ class N3Tree(nn.Module):
         :param cuda: whether to use CUDA kernel if available. If false,
                      uses only PyTorch version.
 
-.. warning::
-        Beware: If multiple indices point to same leaf node,
-        only one of them will be taken
         """
         assert len(indices.shape) == 2
         assert not indices.requires_grad  # Grad wrt indices not supported
@@ -319,6 +316,7 @@ class N3Tree(nn.Module):
     def expand(self, data_format, data_dim=None, remap=None):
         """
         Modify the size of the data stored at the octree leaves.
+
         :param data_format: new data format, RGBA | SH# | SG# | ASG#
         :param data_dim: data dimension; inferred from data_format by default
                 only needed if data_format is RGBA.
@@ -326,6 +324,7 @@ class N3Tree(nn.Module):
                 :code:`new_data[remap] = old_data`. By default,
                 this will be inferred automatically (maps basis functions
                 in the correct way).
+
         """
         assert isinstance(data_format, str), "Please specify valid data format"
         old_data_format = self.data_format
