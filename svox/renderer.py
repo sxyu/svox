@@ -143,17 +143,15 @@ class VolumeRenderer(nn.Module):
         self.min_comp = min_comp
         self.max_comp = max_comp
         if isinstance(tree.data_format, DataFormat):
-            self.data_format = tree.data_format
+            self._data_format = None
         else:
             warn("Legacy N3Tree (pre 0.2.18) without data_format, auto-infering SH deg")
             # Auto SH deg
             ddim = tree.data_dim
             if ddim == 4:
-                self.data_format = DataFormat("")
+                self._data_format = DataFormat("")
             else:
-                self.data_format = DataFormat(f"SH{(ddim - 1) // 3}")
-        if self.max_comp < 0:
-            self.max_comp += self.data_format.basis_dim
+                self._data_format = DataFormat(f"SH{(ddim - 1) // 3}")
         self.tree._weight_accum = None
 
     def forward(self, rays : Rays, cuda=True, fast=False):
@@ -317,6 +315,10 @@ class VolumeRenderer(nn.Module):
                 self._get_options(fast)
             )
 
+    @property
+    def data_format(self):
+        return self._data_format or self.tree.data_format
+
     def _get_options(self, fast=False):
         """
         Make RenderOptions struct to send to C++
@@ -329,6 +331,8 @@ class VolumeRenderer(nn.Module):
         opts.basis_dim = self.data_format.basis_dim
         opts.min_comp = self.min_comp
         opts.max_comp = self.max_comp
+        if self.max_comp < 0:
+            opts.max_comp += opts.basis_dim
 
         if self.ndc_config is not None:
             opts.ndc_width = self.ndc_config.width
