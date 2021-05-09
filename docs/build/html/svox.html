@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Reference &mdash; svox 0.2.28 documentation</title>
+  <title>Reference &mdash; svox 0.2.29 documentation</title>
   
 
   
@@ -104,6 +104,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="ex_nerf.html">Example: Lego Bulldozer Rendering</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex_opt_toy.html">Example: Optimization and expand</a></li>
 </ul>
 
             
@@ -199,7 +200,8 @@ please re-make any optimizers</p>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>N</strong> – int branching factor N</p></li>
-<li><p><strong>data_dim</strong> – int size of data stored at each leaf (NEW in 0.2.28: optional if data_format other than RGBA is given)</p></li>
+<li><p><strong>data_dim</strong> – int size of data stored at each leaf (NEW in 0.2.28: optional if data_format other than RGBA is given).
+If data_format = “RGBA” or empty, this defaults to 4.</p></li>
 <li><p><strong>depth_limit</strong> – int maximum depth  of tree to stop branching/refining
 Note that the root is at depth -1.
 Size N^[-10] leaves (1/1024 for octree) for example

@@ -43,3 +43,4 @@ This is the documentation of svox version: |version| |release|.
    quick
    svox
    ex_nerf
+   ex_opt_toy

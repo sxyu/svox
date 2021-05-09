@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Example: Lego Bulldozer Rendering &mdash; svox 0.2.28 documentation</title>
+  <title>Example: Lego Bulldozer Rendering &mdash; svox 0.2.29 documentation</title>
   
 
   
@@ -38,6 +38,7 @@
     
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Example: Optimization and expand" href="ex_opt_toy.html" />
     <link rel="prev" title="Reference" href="svox.html" /> 
 </head>
 
@@ -102,6 +103,7 @@
 </ul>
 </li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Example: Lego Bulldozer Rendering</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex_opt_toy.html">Example: Optimization and expand</a></li>
 </ul>
 
             
@@ -171,13 +173,17 @@
             
   <div class="section" id="example-lego-bulldozer-rendering">
 <h1>Example: Lego Bulldozer Rendering<a class="headerlink" href="#example-lego-bulldozer-rendering" title="Permalink to this headline">¶</a></h1>
+<p>In this example, we load a stored PlenOctree npz model file and render it using
+VolumeRenderer.
+You can download the npz from:
+<a class="reference external" href="https://drive.google.com/file/d/1XRi_YqdcDrfwqOqV3QPoEOZynuHAGI5M/view?usp=sharing">https://drive.google.com/file/d/1XRi_YqdcDrfwqOqV3QPoEOZynuHAGI5M/view?usp=sharing</a></p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">svox</span>
 <span class="kn">import</span> <span class="nn">torch</span>
 <span class="kn">import</span> <span class="nn">matplotlib.pyplot</span> <span class="k">as</span> <span class="nn">plt</span>
 
 <span class="n">device</span> <span class="o">=</span> <span class="s1">&#39;cuda:0&#39;</span>
 
-<span class="n">t</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;lego_sm.npz&quot;</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;lego.npz&quot;</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 <span class="n">r</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">VolumeRenderer</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
 
 <span class="c1"># Matrix copied from lego test set image 0</span>
@@ -202,6 +208,7 @@
           </div>
           <footer>
     <div class="rst-footer-buttons" role="navigation" aria-label="footer navigation">
+        <a href="ex_opt_toy.html" class="btn btn-neutral float-right" title="Example: Optimization and expand" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
         <a href="svox.html" class="btn btn-neutral float-left" title="Reference" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
     </div>
 
