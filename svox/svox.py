@@ -433,7 +433,7 @@ class N3Tree(nn.Module):
         """
         if self.n_internal - self._n_free.item() <= 1:
             raise RuntimeError("Cannot merge root node")
-        nid = self._frontier[frontier_sel]
+        nid = self._frontier if frontier_sel is None else self._frontier[frontier_sel]
         if nid.numel() == 0:
             return False
         if nid.ndim == 0:
@@ -451,6 +451,20 @@ class N3Tree(nn.Module):
         self._n_free += nid.shape[0]
         self._invalidate()
         return True
+
+    @property
+    def n_frontier(self):
+        """
+        Number of frontier nodes
+        """
+        return self._frontier.shape[0]
+
+    @property
+    def frontier_depth(self):
+        """
+        Depth of frontier nodes (n_frontier)
+        """
+        return self.parent_depth[self._frontier, 1]
 
     def reduce_frontier(self, op=torch.mean, dim=None, grad=False):
         """
