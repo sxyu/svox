@@ -408,6 +408,7 @@ class N3Tree(nn.Module):
         self.data.data[parent_sel] = reduced_vals
         self.child[parent_sel] = 0
         self.parent_depth[nid] = -1
+        self.child[nid] = -1
         self._n_free += nid.shape[0]
         self._invalidate()
         return True
