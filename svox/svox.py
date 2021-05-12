@@ -532,6 +532,43 @@ class N3Tree(nn.Module):
                 grad=grad, dim=dim)
 
 
+    def check_integrity(self):
+        """
+        Do some checks to verify the tree's structural integrity,
+        mostly for debugging. Errors with message if check fails;
+        does nothing else.
+        """
+        n_int = self.n_internal
+        n_free = self._n_free.item()
+        assert n_int - n_free > 0, "Tree has no root"
+        assert self.data.shape[0] == self.capacity, "Data capacity mismatch"
+        assert self.child.shape[0] == self.capacity, "Child capacity mismatch"
+        assert (self.parent_depth[0] == 0).all(), "Node at index 0 must be root"
+
+        free = self.parent_depth[:n_int, 0] == -1
+        remain_ids = torch.arange(n_int, dtype=torch.long, device=self.child.device)[~free]
+        remain_child = self.child[remain_ids]
+        assert (remain_child >= 0).all(), "Nodes not topologically sorted"
+        link_next = remain_child + remain_ids[..., None, None, None]
+
+        assert link_next.max() < n_int, "Tree has an out-of-bounds child link"
+        assert (self.parent_depth[link_next.reshape(-1), 0] != -1).all(), \
+                "Tree has a child link to a deleted node"
+
+        remain_ids = remain_ids[remain_ids != 0]
+        if remain_ids.numel() == 0:
+            return True
+        remain_parents = (*self._unpack_index(
+            self.parent_depth[remain_ids, 0]).long().T,)
+        assert remain_parents[0].max() < n_int, "Parent link out-of-bounds (>=n_int)"
+        assert remain_parents[0].min() >= 0, "Parent link out-of-bounds (<0)"
+        for i in range(1, 4):
+            assert remain_parents[i].max() < self.N, "Parent sublink out-of-bounds (>=N)"
+            assert remain_parents[i].min() >= 0, "Parent sublink out-of-bounds (<0)"
+        assert (remain_parents[0] + self.child[remain_parents] == remain_ids).all(), \
+                "parent->child cycle consistency failed"
+        return True
+
     @property
     def _frontier(self):
         """
