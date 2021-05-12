@@ -579,7 +579,7 @@ class N3Tree(nn.Module):
         if self._last_frontier is None:
             node_selector = (self.child[ :self.n_internal] == 0).reshape(
                     self.n_internal, -1).all(dim=1)
-            node_selector &= self.parent_depth[:, 0] != -1
+            node_selector &= self.parent_depth[:self.n_internal, 0] != -1
             self._last_frontier = node_selector.nonzero(as_tuple=False).reshape(-1)
         return self._last_frontier
 
