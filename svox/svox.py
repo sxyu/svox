@@ -271,12 +271,13 @@ class N3Tree(nn.Module):
         """
         return self[indices].corners
 
-    def partial(self, data_sel=None, device=None):
+    def partial(self, data_sel=None, data_format=None, device=None):
         """
         Get partial tree with some of the data dimensions (channels)
         E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only
 
         :param data_sel: data channel selector, default is all channels
+        :param data_format: data format for new tree, default is current format
         :param device: where to put result tree
 
         :return: partial N3Tree (copy)
@@ -292,6 +293,7 @@ class N3Tree(nn.Module):
                 sel_indices = sel_indices.unsqueeze(0)
             new_data_dim = sel_indices.numel()
         t2 = N3Tree(N=self.N, data_dim=new_data_dim,
+                data_format=data_format or str(self.data_format),
                 depth_limit=self.depth_limit,
                 geom_resize_fact=self.geom_resize_fact,
                 map_location=device)
@@ -322,7 +324,8 @@ class N3Tree(nn.Module):
         :param data_dim: data dimension; inferred from data_format by default
                 only needed if data_format is RGBA.
         :param remap: mapping of old data to new data. For each leaf, we will do
-                :code:`new_data[remap] = old_data`. By default,
+                :code:`new_data[remap] = old_data` if the new data_dim
+                is equal or larger, or `new_data = old_data[remap]` else. By default,
                 this will be inferred automatically (maps basis functions
                 in the correct way).
 
@@ -334,21 +337,36 @@ class N3Tree(nn.Module):
         self.data_dim = data_dim
         self._maybe_auto_data_dim()
         del data_dim
-        assert self.data_dim >= old_data_dim, "Cannot expand to something smaller"
+
+        shrinking = self.data_dim < old_data_dim
 
         if remap is None:
-            sigma_arr = torch.tensor([self.data_dim-1])
-            if old_data_format is None or self.data_format.format == DataFormat.RGBA:
-                remap = torch.cat([torch.arange(old_data_dim - 1), sigma_arr])
+            if shrinking:
+                sigma_arr = torch.tensor([old_data_dim - 1])
+                if old_data_format is None or self.data_format.format == DataFormat.RGBA:
+                    remap = torch.cat([torch.arange(self.data_dim - 1), sigma_arr])
+                else:
+                    assert self.data_format.basis_dim >= 1, \
+                           "Please manually specify data_dim for expand()"
+                    old_basis_dim = old_data_format.basis_dim
+                    if old_basis_dim < 0:
+                        old_basis_dim = 1
+                    shift = old_basis_dim
+                    arr = torch.arange(self.data_format.basis_dim)
+                    remap = torch.cat([arr, shift + arr, 2 * shift + arr, sigma_arr])
             else:
-                assert self.data_format.basis_dim >= 1, \
-                       "Please manually specify data_dim for expand()"
-                old_basis_dim = old_data_format.basis_dim
-                if old_basis_dim < 0:
-                    old_basis_dim = 1
-                shift = self.data_format.basis_dim
-                arr = torch.arange(old_basis_dim)
-                remap = torch.cat([arr, shift + arr, 2 * shift + arr, sigma_arr])
+                sigma_arr = torch.tensor([self.data_dim-1])
+                if old_data_format is None or self.data_format.format == DataFormat.RGBA:
+                    remap = torch.cat([torch.arange(old_data_dim - 1), sigma_arr])
+                else:
+                    assert self.data_format.basis_dim >= 1, \
+                           "Please manually specify data_dim for expand()"
+                    old_basis_dim = old_data_format.basis_dim
+                    if old_basis_dim < 0:
+                        old_basis_dim = 1
+                    shift = self.data_format.basis_dim
+                    arr = torch.arange(old_basis_dim)
+                    remap = torch.cat([arr, shift + arr, 2 * shift + arr, sigma_arr])
 
         may_oom = self.data.numel() > 8e9
         if may_oom:
@@ -356,12 +374,33 @@ class N3Tree(nn.Module):
             self.data = nn.Parameter(self.data.cpu())
         tmp_data = torch.zeros(
             (*self.data.data.shape[:-1], self.data_dim), device=self.data.device)
-        tmp_data[..., remap] = self.data.data
+        if shrinking:
+            tmp_data[:] = self.data.data[..., remap]
+        else:
+            tmp_data[..., remap] = self.data.data
         if may_oom:
             self.data = nn.Parameter(tmp_data.to(device=self.child.device))
         else:
             self.data = nn.Parameter(tmp_data)
+        self._invalidate()
 
+    def shrink(self, data_format, data_dim=None, remap=None):
+        """
+        Modify the size of the data stored at the octree leaves.
+        (Alias of expand, because it can actually both expand and shrink)
+
+        :param data_format: new data format, RGBA | SH# | SG# | ASG#
+        :param data_dim: data dimension; inferred from data_format by default
+                only needed if data_format is RGBA.
+        :param remap: mapping of old data to new data. For each leaf, we will do
+                :code:`new_data = old_data[remap]` if the
+                new data_dim gets smaller,
+                or :code:`new_data[remap] = old_data` else. By default,
+                this will be inferred automatically (maps basis functions
+                in the correct way).
+
+        """
+        self.expand(data_format, data_dim, remap)
 
     def clone(self, device=None):
         """

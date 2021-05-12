@@ -274,13 +274,14 @@ uses only PyTorch version.</p></li>
 
 <dl class="py method">
 <dt id="svox.N3Tree.partial">
-<code class="sig-name descname"><span class="pre">partial</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_sel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.partial" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname"><span class="pre">partial</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_sel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.partial" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get partial tree with some of the data dimensions (channels)
 E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data_sel</strong> – data channel selector, default is all channels</p></li>
+<li><p><strong>data_format</strong> – data format for new tree, default is current format</p></li>
 <li><p><strong>device</strong> – where to put result tree</p></li>
 </ul>
 </dd>
@@ -301,7 +302,30 @@ E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only</p>
 <li><p><strong>data_dim</strong> – data dimension; inferred from data_format by default
 only needed if data_format is RGBA.</p></li>
 <li><p><strong>remap</strong> – mapping of old data to new data. For each leaf, we will do
-<code class="code docutils literal notranslate"><span class="pre">new_data[remap]</span> <span class="pre">=</span> <span class="pre">old_data</span></code>. By default,
+<code class="code docutils literal notranslate"><span class="pre">new_data[remap]</span> <span class="pre">=</span> <span class="pre">old_data</span></code> if the new data_dim
+is equal or larger, or <cite>new_data = old_data[remap]</cite> else. By default,
+this will be inferred automatically (maps basis functions
+in the correct way).</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.shrink">
+<code class="sig-name descname"><span class="pre">shrink</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_format</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remap</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.shrink" title="Permalink to this definition">¶</a></dt>
+<dd><p>Modify the size of the data stored at the octree leaves.
+(Alias of expand, because it can actually both expand and shrink)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_format</strong> – new data format, RGBA | SH# | SG# | ASG#</p></li>
+<li><p><strong>data_dim</strong> – data dimension; inferred from data_format by default
+only needed if data_format is RGBA.</p></li>
+<li><p><strong>remap</strong> – mapping of old data to new data. For each leaf, we will do
+<code class="code docutils literal notranslate"><span class="pre">new_data</span> <span class="pre">=</span> <span class="pre">old_data[remap]</span></code> if the
+new data_dim gets smaller,
+or <code class="code docutils literal notranslate"><span class="pre">new_data[remap]</span> <span class="pre">=</span> <span class="pre">old_data</span></code> else. By default,
 this will be inferred automatically (maps basis functions
 in the correct way).</p></li>
 </ul>
