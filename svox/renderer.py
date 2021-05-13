@@ -272,10 +272,10 @@ class VolumeRenderer(nn.Module):
         :param fast: if True, enables faster evaluation, potentially leading
                      to some loss of accuracy.
 
-        :return: (height, width, rgb_dim + 1)
+        :return: :code:`(height, width, rgb_dim)`
                 where *rgb_dim* is :code:`tree.data_dim - 1` if
                 :code:`data_format.format == DataFormat.RGBA`
-                or :code:`data_format.basis_dim` else
+                or :code:`(tree.data_dim - 1) / tree.data_format.basis_dim` else.
 
         """
         if fy is None:
@@ -331,6 +331,7 @@ class VolumeRenderer(nn.Module):
         opts.basis_dim = self.data_format.basis_dim
         opts.min_comp = self.min_comp
         opts.max_comp = self.max_comp
+        
         if self.max_comp < 0:
             opts.max_comp += opts.basis_dim
 

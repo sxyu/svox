@@ -298,7 +298,9 @@ __device__ __inline__ void trace_ray(
                 if (light_intensity <= opt.stop_thresh) {
                     // Full opacity, stop
                     scalar_t scale = 1.0 / (1.0 - light_intensity);
-                    out[0] *= scale; out[1] *= scale; out[2] *= scale;
+                    for (int j = 0; j < out_data_dim; ++j) {
+                        out[j] *= scale;
+                    }
                     return;
                 }
             }
