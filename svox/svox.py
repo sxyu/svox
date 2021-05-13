@@ -736,7 +736,7 @@ class N3Tree(nn.Module):
             # Shift data over
             par_shift = csum[remain_parents[0]]
             self.child[remain_parents] -= csum[remain_ids] - par_shift
-            self.parent_depth[remain_ids, 0] -= par_shift
+            self.parent_depth[remain_ids, 0] -= par_shift * (self.N ** 3)
 
             # Remake the data now
             self.data = nn.Parameter(self.data.data[remain_ids])
