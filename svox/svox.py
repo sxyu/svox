@@ -59,11 +59,12 @@ class N3Tree(nn.Module):
     By :math:`N^3`-tree we mean a 3D tree with branching factor N at each interior node,
     where :math:`N=2` is the familiar octree.
 
-.. warning::
-    `nn.Parameters` can change size, which
-    makes current optimizers invalid. If any refine() or
-    shrink_to_fit() call returns True,
-    please re-make any optimizers
+    .. warning::
+        `nn.Parameters` can change size, which
+        makes current optimizers invalid. If any :code:`refine(): or
+        :code:`shrink_to_fit()` call returns True,
+        or :code:`expand(), shrink()` is used, 
+        please re-make any optimizers
     """
     def __init__(self, N=2, data_dim=None, depth_limit=10,
             init_reserve=1, init_refine=0, geom_resize_fact=1.0,
@@ -79,17 +80,17 @@ class N3Tree(nn.Module):
                         If data_format = "RGBA" or empty, this defaults to 4.
         :param depth_limit: int maximum depth  of tree to stop branching/refining
                             Note that the root is at depth -1.
-                            Size N^[-10] leaves (1/1024 for octree) for example
+                            Size :code:`N^[-10]` leaves (1/1024 for octree) for example
                             are depth 9. :code:`max_depth` applies to the same
                             depth values.
         :param init_reserve: int amount of nodes to reserve initially
         :param init_refine: int number of times to refine entire tree initially
-                            inital resolution will be [N^(init_refine + 1)]^3.
+                            inital resolution will be :code:`[N^(init_refine + 1)]^3`.
                             initial max_depth will be init_refine.
         :param geom_resize_fact: float geometric resizing factor
         :param radius: float or list, 1/2 side length of cube (possibly in each dim)
         :param center: list center of space
-        :param data_format: a string to indicate the data format. RGBA | SH# | SG# | ASG#
+        :param data_format: a string to indicate the data format. :code:`RGBA | SH# | SG# | ASG#`
         :param extra_data: extra data to include with tree
         :param map_location: str device to put data
 
@@ -148,8 +149,8 @@ class N3Tree(nn.Module):
         """
         Set tree values,
 
-        :param indices: torch.Tensor (Q, 3)
-        :param values: torch.Tensor (Q, K)
+        :param indices: torch.Tensor :code:`(Q, 3)`
+        :param values: torch.Tensor :code:`(Q, K)`
         :param cuda: whether to use CUDA kernel if available. If false,
                      uses only PyTorch version.
 
@@ -197,13 +198,13 @@ class N3Tree(nn.Module):
         """
         Get tree values. Differentiable.
 
-        :param indices: :math:`(Q, 3)` the points
+        :param indices: :code:`(Q, 3)` the points
         :param cuda: whether to use CUDA kernel if available. If false,
                      uses only PyTorch version.
         :param want_node_ids: if true, returns node ID for each query.
-        :param world: use world space instead of :math:`[0,1]^3`, default True
+        :param world: use world space instead of :code:`[0,1]^3`, default True
 
-        :return: (Q, data_dim), [(Q)]
+        :return: :code:`(Q, data_dim), [(Q)]`
 
         """
         assert not indices.requires_grad  # Grad wrt indices not supported
@@ -264,9 +265,9 @@ class N3Tree(nn.Module):
         """
         Snap indices to lowest corner of corresponding leaf voxel
 
-        :param indices: (B, 3) indices to snap
+        :param indices: :code:`(B, 3)` indices to snap
 
-        :return: (B, 3)
+        :return: :code:`(B, 3)`
 
         """
         return self[indices].corners
@@ -274,7 +275,7 @@ class N3Tree(nn.Module):
     def partial(self, data_sel=None, data_format=None, device=None):
         """
         Get partial tree with some of the data dimensions (channels)
-        E.g. tree.partial(-1) to get tree with data_dim 1 of last channel only
+        E.g. :code:`tree.partial(-1)` to get tree with data_dim 1 of last channel only
 
         :param data_sel: data channel selector, default is all channels
         :param data_format: data format for new tree, default is current format
@@ -320,7 +321,7 @@ class N3Tree(nn.Module):
         """
         Modify the size of the data stored at the octree leaves.
 
-        :param data_format: new data format, RGBA | SH# | SG# | ASG#
+        :param data_format: new data format, :code:`RGBA | SH# | SG# | ASG#`
         :param data_dim: data dimension; inferred from data_format by default
                 only needed if data_format is RGBA.
         :param remap: mapping of old data to new data. For each leaf, we will do
@@ -329,8 +330,8 @@ class N3Tree(nn.Module):
                 this will be inferred automatically (maps basis functions
                 in the correct way).
 
-.. warning::
-        Will change the nn.Parameter size (data), breaking optimizer! Please re-create the optimizer
+        .. warning::
+                Will change the nn.Parameter size (data), breaking optimizer! Please re-create the optimizer
         """
         assert isinstance(data_format, str), "Please specify valid data format"
         old_data_format = self.data_format
@@ -391,7 +392,7 @@ class N3Tree(nn.Module):
         Modify the size of the data stored at the octree leaves.
         (Alias of expand, because it can actually both expand and shrink)
 
-        :param data_format: new data format, RGBA | SH# | SG# | ASG#
+        :param data_format: new data format, :code:`RGBA | SH# | SG# | ASG#`
         :param data_dim: data dimension; inferred from data_format by default
                 only needed if data_format is RGBA.
         :param remap: mapping of old data to new data. For each leaf, we will do
@@ -401,8 +402,8 @@ class N3Tree(nn.Module):
                 this will be inferred automatically (maps basis functions
                 in the correct way).
 
-.. warning::
-        Will change the nn.Parameter size (data), breaking optimizer! Please re-create the optimizer
+        .. warning::
+                Will change the nn.Parameter size (data), breaking optimizer! Please re-create the optimizer
         """
         self.expand(data_format, data_dim, remap)
 
@@ -420,19 +421,19 @@ class N3Tree(nn.Module):
         """
         Merge leaves into selected 'frontier' nodes
         (i.e., nodes for which all children are leaves).
-        Use shrink_to_fit() to recover memory freed.
+        Use :code:`shrink_to_fit()` to recover memory freed.
 
         :param frontier_sel: selector (int, mask, list of indices etc)
-                             for frontier nodes. In same order as reduce_frontier().
+                             for frontier nodes. In same order as :code:`reduce_frontier()`.
                              Default all nodes.
-                             *Typical use*: use reduce_frontier(op=...) to determine
+                             *Typical use*: use :code:`reduce_frontier(...)` to determine
                              conditions for merge, then pass
                              mask or indices to merge().
         :param op: reduction to combine child leaves into node.
                    E.g. torch.max, torch.mean.
-                   Should take a positional argument :code:`x` (B, N, data_dim) and
+                   Should take a positional argument :code:`x` :code:`(B, N, data_dim)` and
                    a named parameter :code:`dim` (always 1),
-                   and return a matrix of (B, your_out_dim).
+                   and return a matrix of :code:`(B, data_dim)`.
                    If a tuple is returned, uses first result.
 
         """
@@ -467,7 +468,7 @@ class N3Tree(nn.Module):
     @property
     def frontier_depth(self):
         """
-        Depth of frontier nodes (n_frontier)
+        Depth of frontier nodes, size :code:`(n_frontier)`
         """
         return self.parent_depth[self._frontier, 1]
 
@@ -479,13 +480,25 @@ class N3Tree(nn.Module):
         :param op: reduction to combine child leaves into node.
                    E.g. torch.max, torch.mean.
                    Should take a positional argument :code:`x`
-                   (B, N, in_dim <= data_dim) and
+                   :code:`(B, N, in_dim <= data_dim)` and
                    a named parameter :code:`dim` (always 1),
                    and return a matrix of (B, your_out_dim).
         :param dim: dimension(s) of data to return, e.g. -1 returns
                     last data dimension for all 'frontier' nodes
         :param grad: if True, returns a tensor differentiable wrt tree data.
                       Default False.
+
+        :Example:
+
+        .. code-block:: python
+
+            def mean_and_var_func(x, dim=1):
+                # (n_frontier, tree.N^3, data_dim) -> (n_frontier, 2 * data_dim)
+                # Outputs mean and variance over children of each frontier node
+                return torch.cat([torch.mean(x, dim=1),
+                                  torch.var(x, dim=1)], dim=-1)
+            # returns: (n_frontier, 2 * data_dim)
+            tree.reduce_frontier(mean_and_var_func)
 
         :return: reduced tensor
         """
@@ -508,7 +521,7 @@ class N3Tree(nn.Module):
         operation, taking the returned values and discarding the
         argmax part.
 
-        :param dim: dimension(s) of data to return, e.g. -1 returns
+        :param dim: dimension(s) of data to return, e.g. :code:`-1` returns
                     last data dimension for all 'frontier' nodes
         :param grad: if True, returns a tensor differentiable wrt tree data.
                       Default False.
@@ -609,18 +622,18 @@ class N3Tree(nn.Module):
         Refine each selected leaf node, respecting depth_limit.
 
         :param repeats: int number of times to repeat refinement
-        :param sel: (N, 4) node selector. Default selects all leaves.
+        :param sel: :code:`(N, 4)` node selector. Default selects all leaves.
 
         :return: True iff N3Tree.data parameter was resized, requiring
                  optimizer reinitialization if you're using an optimizer
 
-.. warning::
-    The parameter :code:`tree.data` can change due to refinement. If any refine() call returns True, please re-make any optimizers
-    using tree.params().
+        .. warning::
+            The parameter :code:`tree.data` can change due to refinement. If any refine() call returns True, please re-make any optimizers
+            using :code`tree.params()`.
 
-.. warning::
-    The selector :code:`sel` is assumed to contain unique leaf indices. If there are duplicates
-    memory will be wasted. We do not dedup here for efficiency reasons.
+        .. warning::
+            The selector :code:`sel` is assumed to contain unique leaf indices. If there are duplicates
+            memory will be wasted. We do not dedup here for efficiency reasons.
 
         """
         if self._lock_tree_structure:
@@ -680,7 +693,7 @@ class N3Tree(nn.Module):
         Advanced: refine specific leaf node. Mostly for testing purposes.
 
         :param intnode_idx: index of internal node for identifying leaf
-        :param xyzi: tuple of size 3 with each element in {0, ... N-1}
+        :param xyzi: tuple of size 3 with each element in :code:`{0, ... N-1}`
                     in xyz orde rto identify leaf within internal node
 
         """
@@ -717,10 +730,11 @@ class N3Tree(nn.Module):
         """
         Shrink data & buffers to tightly needed fit tree data,
         possibly dealing with fragmentation caused by merging.
-        This is called by the save() function.
+        This is called by the :code:`save()` function by default, unless
+        :code:`shrink=False` is specified there.
 
-.. warning::
-        Will change the nn.Parameter size (data), breaking optimizer!
+        .. warning::
+                Will change the nn.Parameter size (data), breaking optimizer!
         """
         if self._lock_tree_structure:
             raise RuntimeError("Tree locked")
@@ -779,15 +793,22 @@ class N3Tree(nn.Module):
 
     def accumulate_weights(self):
         """
-        Begin weight accumulation
+        Begin weight accumulation.
 
-.. code-block:: python
+        .. warning::
 
-        with tree.accumulate_weights() as accum:
-            ...
+            Weight accumulator has not been validated
+            and may have bugs
 
-        # (n_leaves) in same order as values etc.
-        accum = accum()
+        :Example:
+
+        .. code-block:: python
+
+            with tree.accumulate_weights() as accum:
+                ...
+
+            # (n_leaves) in same order as values etc.
+            accum = accum()
         """
         return WeightAccumulator(self)
 
