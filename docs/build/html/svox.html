@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Reference &mdash; svox 0.2.29 documentation</title>
+  <title>Reference &mdash; svox 0.2.30-dev documentation</title>
   
 
   
@@ -371,6 +371,18 @@ If a tuple is returned, uses first result.</p></li>
 </dd></dl>
 
 <dl class="py method">
+<dt id="svox.N3Tree.n_frontier">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">n_frontier</span></code><a class="headerlink" href="#svox.N3Tree.n_frontier" title="Permalink to this definition">¶</a></dt>
+<dd><p>Number of frontier nodes</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.frontier_depth">
+<em class="property"><span class="pre">property</span> </em><code class="sig-name descname"><span class="pre">frontier_depth</span></code><a class="headerlink" href="#svox.N3Tree.frontier_depth" title="Permalink to this definition">¶</a></dt>
+<dd><p>Depth of frontier nodes (n_frontier)</p>
+</dd></dl>
+
+<dl class="py method">
 <dt id="svox.N3Tree.reduce_frontier">
 <code class="sig-name descname"><span class="pre">reduce_frontier</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="pre">op=&lt;built-in</span> <span class="pre">method</span> <span class="pre">mean</span> <span class="pre">of</span> <span class="pre">type</span> <span class="pre">object&gt;</span></em>, <em class="sig-param"><span class="pre">dim=None</span></em>, <em class="sig-param"><span class="pre">grad=False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.reduce_frontier" title="Permalink to this definition">¶</a></dt>
 <dd><p>Reduce child leaf values for each ‘frontier’ node
@@ -437,6 +449,14 @@ Default False.</p></li>
 <dd class="field-even"><p>reduced tensor</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.check_integrity">
+<code class="sig-name descname"><span class="pre">check_integrity</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.check_integrity" title="Permalink to this definition">¶</a></dt>
+<dd><p>Do some checks to verify the tree’s structural integrity,
+mostly for debugging. Errors with message if check fails;
+does nothing else.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -828,10 +848,10 @@ to some loss of accuracy.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>(height, width, rgb_dim + 1)
+<dd class="field-even"><p><code class="code docutils literal notranslate"><span class="pre">(height,</span> <span class="pre">width,</span> <span class="pre">rgb_dim)</span></code>
 where <em>rgb_dim</em> is <code class="code docutils literal notranslate"><span class="pre">tree.data_dim</span> <span class="pre">-</span> <span class="pre">1</span></code> if
 <code class="code docutils literal notranslate"><span class="pre">data_format.format</span> <span class="pre">==</span> <span class="pre">DataFormat.RGBA</span></code>
-or <code class="code docutils literal notranslate"><span class="pre">data_format.basis_dim</span></code> else</p>
+or <code class="code docutils literal notranslate"><span class="pre">(tree.data_dim</span> <span class="pre">-</span> <span class="pre">1)</span> <span class="pre">/</span> <span class="pre">tree.data_format.basis_dim</span></code> else.</p>
 </dd>
 </dl>
 </dd></dl>

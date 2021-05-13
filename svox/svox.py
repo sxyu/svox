@@ -329,6 +329,8 @@ class N3Tree(nn.Module):
                 this will be inferred automatically (maps basis functions
                 in the correct way).
 
+.. warning::
+        Will change the nn.Parameter size (data), breaking optimizer! Please re-create the optimizer
         """
         assert isinstance(data_format, str), "Please specify valid data format"
         old_data_format = self.data_format
@@ -399,6 +401,8 @@ class N3Tree(nn.Module):
                 this will be inferred automatically (maps basis functions
                 in the correct way).
 
+.. warning::
+        Will change the nn.Parameter size (data), breaking optimizer! Please re-create the optimizer
         """
         self.expand(data_format, data_dim, remap)
 
@@ -430,6 +434,7 @@ class N3Tree(nn.Module):
                    a named parameter :code:`dim` (always 1),
                    and return a matrix of (B, your_out_dim).
                    If a tuple is returned, uses first result.
+
         """
         if self.n_internal - self._n_free.item() <= 1:
             raise RuntimeError("Cannot merge root node")
