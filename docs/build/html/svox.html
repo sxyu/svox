@@ -365,7 +365,7 @@ for frontier nodes. In same order as <code class="code docutils literal notransl
 Default all nodes.
 <em>Typical use</em>: use <code class="code docutils literal notranslate"><span class="pre">reduce_frontier(...)</span></code> to determine
 conditions for merge, then pass
-mask or indices to merge().</p></li>
+bool mask (of length n_frontier) or indices to <code class="code docutils literal notranslate"><span class="pre">merge()</span></code>.</p></li>
 <li><p><strong>op</strong> – reduction to combine child leaves into node.
 E.g. torch.max, torch.mean.
 Should take a positional argument <code class="code docutils literal notranslate"><span class="pre">x</span></code> <code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">N,</span> <span class="pre">data_dim)</span></code> and
@@ -403,7 +403,7 @@ Should take a positional argument <code class="code docutils literal notranslate
 <code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">N,</span> <span class="pre">in_dim</span> <span class="pre">&lt;=</span> <span class="pre">data_dim)</span></code> and
 a named parameter <code class="code docutils literal notranslate"><span class="pre">dim</span></code> (always 1),
 and return a matrix of (B, your_out_dim).</p></li>
-<li><p><strong>dim</strong> – dimension(s) of data to return, e.g. -1 returns
+<li><p><strong>dim</strong> – dimension(s) of data to return, e.g. <code class="code docutils literal notranslate"><span class="pre">-1</span></code> returns
 last data dimension for all ‘frontier’ nodes</p></li>
 <li><p><strong>grad</strong> – if True, returns a tensor differentiable wrt tree data.
 Default False.</p></li>
@@ -459,7 +459,7 @@ Default False.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>dim</strong> – dimension(s) of data to return, e.g. -1 returns
+<li><p><strong>dim</strong> – dimension(s) of data to return, e.g. <code class="code docutils literal notranslate"><span class="pre">-1</span></code> returns
 last data dimension for all ‘frontier’ nodes</p></li>
 <li><p><strong>grad</strong> – if True, returns a tensor differentiable wrt tree data.
 Default False.</p></li>
@@ -498,7 +498,7 @@ optimizer reinitialization if you’re using an optimizer</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>The parameter <code class="code docutils literal notranslate"><span class="pre">tree.data</span></code> can change due to refinement. If any refine() call returns True, please re-make any optimizers
-using :code`tree.params()`.</p>
+using <code class="code docutils literal notranslate"><span class="pre">tree.params()</span></code>.</p>
 </div>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>

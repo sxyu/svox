@@ -428,7 +428,7 @@ class N3Tree(nn.Module):
                              Default all nodes.
                              *Typical use*: use :code:`reduce_frontier(...)` to determine
                              conditions for merge, then pass
-                             mask or indices to merge().
+                             bool mask (of length n_frontier) or indices to :code:`merge()`.
         :param op: reduction to combine child leaves into node.
                    E.g. torch.max, torch.mean.
                    Should take a positional argument :code:`x` :code:`(B, N, data_dim)` and
@@ -483,7 +483,7 @@ class N3Tree(nn.Module):
                    :code:`(B, N, in_dim <= data_dim)` and
                    a named parameter :code:`dim` (always 1),
                    and return a matrix of (B, your_out_dim).
-        :param dim: dimension(s) of data to return, e.g. -1 returns
+        :param dim: dimension(s) of data to return, e.g. :code:`-1` returns
                     last data dimension for all 'frontier' nodes
         :param grad: if True, returns a tensor differentiable wrt tree data.
                       Default False.
@@ -536,7 +536,7 @@ class N3Tree(nn.Module):
         Takes diameter over child leaf values for each 'frontier' node
         (i.e., nodes for which all children are leaves).
 
-        :param dim: dimension(s) of data to return, e.g. -1 returns
+        :param dim: dimension(s) of data to return, e.g. :code:`-1` returns
                     last data dimension for all 'frontier' nodes
         :param grad: if True, returns a tensor differentiable wrt tree data.
                       Default False.
@@ -629,7 +629,7 @@ class N3Tree(nn.Module):
 
         .. warning::
             The parameter :code:`tree.data` can change due to refinement. If any refine() call returns True, please re-make any optimizers
-            using :code`tree.params()`.
+            using :code:`tree.params()`.
 
         .. warning::
             The selector :code:`sel` is assumed to contain unique leaf indices. If there are duplicates
