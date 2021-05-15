@@ -159,16 +159,12 @@ class VolumeRenderer(nn.Module):
         Render a batch of rays. Differentiable.
 
         :param rays: namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)
-        :param rgba: (B, rgb_dim + 1)
-                where *rgb_dim* is :code:`tree.data_dim - 1` if
-                :code:`data_format.format == RGBA`
-                or :code:`data_format.basis_dim * 3` else
         :param cuda: whether to use CUDA kernel if available. If false,
                      uses only PyTorch version.
         :param fast: if True, enables faster evaluation, potentially leading
                      to some loss of accuracy.
 
-        :return: (B, 3)
+        :return: :code:`(B, 3)` RGB per ray.
 
         """
         if not cuda or _C is None or not self.tree.data.is_cuda:

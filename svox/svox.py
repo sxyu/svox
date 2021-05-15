@@ -428,7 +428,7 @@ class N3Tree(nn.Module):
                              Default all nodes.
                              *Typical use*: use :code:`reduce_frontier(...)` to determine
                              conditions for merge, then pass
-                             bool mask (of length n_frontier) or indices to :code:`merge()`.
+                             bool mask (of length :code:`n_frontier`) or indices to :code:`merge()`.
         :param op: reduction to combine child leaves into node.
                    E.g. torch.max, torch.mean.
                    Should take a positional argument :code:`x` :code:`(B, N, data_dim)` and
@@ -482,7 +482,7 @@ class N3Tree(nn.Module):
                    Should take a positional argument :code:`x`
                    :code:`(B, N, in_dim <= data_dim)` and
                    a named parameter :code:`dim` (always 1),
-                   and return a matrix of (B, your_out_dim).
+                   and return a matrix of :code:`(B, your_out_dim)`.
         :param dim: dimension(s) of data to return, e.g. :code:`-1` returns
                     last data dimension for all 'frontier' nodes
         :param grad: if True, returns a tensor differentiable wrt tree data.
