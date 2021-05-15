@@ -164,8 +164,10 @@ class VolumeRenderer(nn.Module):
         :param fast: if True, enables faster evaluation, potentially leading
                      to some loss of accuracy.
 
-        :return: :code:`(B, 3)` RGB per ray.
-
+        :return: :code:`(B, rgb_dim)`.
+                Where *rgb_dim* is :code:`tree.data_dim - 1` if
+                :code:`data_format.format == DataFormat.RGBA`
+                or :code:`(tree.data_dim - 1) / tree.data_format.basis_dim` else.
         """
         if not cuda or _C is None or not self.tree.data.is_cuda:
             assert False  # Not supported in current version, use CUDA kernel
