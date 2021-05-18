@@ -85,8 +85,6 @@ __device__ __constant__ const float C4[] = {
 
 #define _SOFTPLUS_M1(x) (logf(1 + expf(x - 1)))
 #define _SIGMOID(x) (1 / (1 + expf(-x)))
-#define _RGB_PAD(x, p) (x * (1 + 2 * p) - p)
-#define _D_RGB_PAD(p) (1 + 2 * p)
 #define _D_SOFTPLUS_M1(x) (1 / (1 + expf(1 - x)))
 
 template<typename scalar_t>
