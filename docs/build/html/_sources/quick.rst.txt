@@ -6,12 +6,12 @@ Quick Guide
 Below I give a quick overview of some core functionality of svox to help get you started.
 Please see :ref:`svox` for detailed per-method documentation.
 To install the library, simply use :code:`pip install sxox`; you would of course need
-to install PyTorch first. 
+to install PyTorch first.
 You will also need the CUDA runtime to compile the CUDA extension;
-while the library works without the CUDA extension, it is very slow, and will emit a warning the 
+while the library works without the CUDA extension, it is very slow, and will emit a warning the
 first time a CUDA-capable operation is used.
 
-If the extension fails to build, check if your PyTorch is using the same CUDA 
+If the extension fails to build, check if your PyTorch is using the same CUDA
 version as you have installed on your system.
 
 Construction
@@ -22,7 +22,7 @@ We begin by importing the library and constructing a tree:
 >>> import svox
 >>> t=svox.N3Tree(data_dim=4, data_format="RGBA",
                   center=[0.5, 0.5, 0.5], radius=0.5,
-                  N=2, map_location="cpu",
+                  N=2, device="cpu",
                   init_refine=0, depth_limit=10,
                   extra_data=None)
 >>> t.cuda()
@@ -37,15 +37,15 @@ We begin by importing the library and constructing a tree:
   For SH (spherical harmonics), basis_dim must be a square number at most 25. SG (spherical Gaussians) and ASG (anisotropic SG) require :code:`extra_data` field to render properly.
 * :code:`radius` and :code:`center` specify the transform of the tree in space, with :code:`radius` meaning the half-edge length of the bounding cube (1 float or list of 3 floats for each axis) and :code:`center` specifying the center of the cube (list of 3 floats).  By default cube is centered at :code:`[0.5, 0.5, 0.5]` with radius 0.5.
 * :code:`N` (optional, default 2) is the N in :math:`N^3` tree. Typically, put :code:`N=2` for an octree.
-* :code:`map_location` (optional, default cpu) can be a string like 'cuda' and is where the tree's data will be stored.
+* :code:`device` (optional, default cpu) can be a string like 'cuda' and is where the tree's data will be stored.
 * :code:`init_refine` specifies initial LOD of the tree: the initial leaf voxel size will be :code:`N^(init_refine + 1)`.
 * :code:`depth_limit` is a utility for limiting the maximum depth of any tree leaf after refinement.  Note that the root is at depth -1, which may be a bit confusing; initially the tree has maximum depth 1 and :code:`NxNxN` leaves.
 * :code:`extra_data` for SG, basis_dim x 4 matrix of variance/mean (3). For ASG, data_dim x 11 matrix.
   Currently, optimizing wrt this matrix is not supported, so the parameters should be pre-determined.
 
-:code:`svox.N3Tree` is a PyTorch module and 
+:code:`svox.N3Tree` is a PyTorch module and
 usual operations such as :code:`.parameters()` or :code:`.cuda()` can be used.
-The forward method of the N3Tree class takes a batch of points :code:`(B, 3)` and returns 
+The forward method of the N3Tree class takes a batch of points :code:`(B, 3)` and returns
 corresponding data.
 
 Saving and Loading
@@ -53,9 +53,9 @@ Saving and Loading
 To save and load trees to/from npz files, use
 
 >>> tree.save(npz_path)
->>> tree = svox.N3Tree.load(npz_path, map_location=device)
+>>> tree = svox.N3Tree.load(npz_path, device=device)
 
-'map_location' can be a string like 'cuda' and is where the tree's data will be loaded into, similar
+'device' can be a string like 'cuda' and is where the tree's data will be loaded into, similar
 to that in the constructor.
 Since the tree is a PyTorch module, you could also use a PyTorch checkpoint, but it can be VERY inefficient.
 
@@ -104,7 +104,7 @@ The tree is self behaves similarly to :code:`tree[:]`. Some more examples:
 When used with a PyTorch operation such as :code:`torch.mean` or operators like :code:`+`,
 the N3TreeView is queried and the values are converted to a PyTorch tensor automatically.
 If you wish to get the values as a tensor explicitly, use :code:`view.values`.
-See the section :ref:`Advanced Leaf-level Accessors<leaf_level_acc>` for more advanced operations supported by 
+See the section :ref:`Advanced Leaf-level Accessors<leaf_level_acc>` for more advanced operations supported by
 N3TreeView.
 
 Refinement oracle
@@ -185,20 +185,25 @@ which returns points and lengths in local coordinates :math:`[0,1]^3`.
 Advanced: Volume Rendering Weight Accumulator Context
 -------------------------------------------------------
 Sometimes we want to accumulate volume rendering weights in each tree leaf,
-to see how much each leaf was used in the rendering process.
+to see how much each leaf voxel was used in the rendering process.
+We may either want the max or total rendering weight (influence) within each voxel.
 We have a built-in context manager to do so.
 
->>> with tree.accumulate_weights() as accum:
+>>> with tree.accumulate_weights(op="sum") as accum:  # or op="max"
 >>>     # Do some ray/image rendering with a renderer on the tree
 >>>     # Tree cannot be refined or shrank here
 >>> accum = accum()
 
-The final :code:`accum` is a float tensor of shape 
-equal to the number of leaves in the tree which can
+The final :code:`accum` is a float tensor of shape
+equal to tree.n_leaves which can
 be used to index into the tree.
-Each entry is equal to the sum of all volume rendering weights
+Each entry is equal to the *sum* of all volume rendering *weights*
 for all rays which every hit the voxel within the context.
 You can use it as follows:
 
 >>> tree[accum > 1.0].refine()
 >>> tree[accum < 1.0] += 1
+
+*Advanced*: You can also use :code:`accum.value` to grab the complete
+accumulated tensor of size equal to :code:`tree.data`.
+This is more efficient than using :code:`accum()`.

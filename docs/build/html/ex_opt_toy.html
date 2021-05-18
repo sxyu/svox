@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Example: Optimization and expand &mdash; svox 0.2.30 documentation</title>
+  <title>Example: Optimization and expand &mdash; svox 0.2.31-dev documentation</title>
   
 
   
@@ -182,7 +182,7 @@ Slowly, the results get closer to the target vector.</p>
 <span class="kn">import</span> <span class="nn">torch</span>
 
 <span class="n">device</span> <span class="o">=</span> <span class="s1">&#39;cuda:0&#39;</span>
-<span class="n">t</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="p">(</span><span class="n">map_location</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">data_format</span><span class="o">=</span><span class="s2">&quot;SH1&quot;</span><span class="p">)</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="p">(</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">data_format</span><span class="o">=</span><span class="s2">&quot;SH1&quot;</span><span class="p">)</span>
 
 <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
 <span class="n">t</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">:]</span> <span class="o">=</span> <span class="mf">0.5</span>

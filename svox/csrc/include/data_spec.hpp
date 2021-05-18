@@ -71,6 +71,7 @@ struct TreeSpec {
     torch::Tensor offset;
     torch::Tensor scaling;
     torch::Tensor _weight_accum;
+    bool _weight_accum_max;
 
     inline void check() {
         CHECK_INPUT(data);
@@ -119,6 +120,9 @@ struct RenderOptions {
 
     float sigma_thresh;
     float stop_thresh;
+
+    bool density_softplus;
+    float rgb_padding;
 };
 
 using QueryResult = std::tuple<torch::Tensor, torch::Tensor>;

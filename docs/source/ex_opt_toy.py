@@ -2,7 +2,7 @@ import svox
 import torch
 
 device = 'cuda:0'
-t = svox.N3Tree(map_location=device, data_format="SH1")
+t = svox.N3Tree(device=device, data_format="SH1")
 
 t[0, 0, 0, :-1] = 0.0
 t[0, 0, 0, -1:] = 0.5

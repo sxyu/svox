@@ -119,20 +119,45 @@ class VolumeRenderer(nn.Module):
             step_size : float=1e-3,
             background_brightness : float=1.0,
             ndc : NDCConfig=None,
-            min_comp=0,
-            max_comp=-1
+            min_comp : int=0,
+            max_comp : int=-1,
+            density_softplus : bool=False,
+            rgb_padding : float=0.0,
         ):
         """
         Construct volume renderer associated with given N^3 tree.
 
+        The renderer traces rays with origins/dirs within the octree boundaries,
+        detection ray-voxel intersections. The color and density within
+        each voxel is assumed constant, and no interpolation is performed.
+
+        For each intersection point, it queries the tree, assuming the last data dimension
+        is density (sigma) and the rest of the dimensions are color,
+        formatted according to tree.data_format.
+        It then applies SH/SG/ASG basis functions, if any, according to viewdirs.
+        Sigmoid will be applied to these colors to normalize them,
+        and optionally a shifted softplus is applied to the density.
+
         :param tree: N3Tree instance for rendering
-        :param step_size: float step size eps, added to each DDA step
+        :param step_size: float step size eps, added to each voxel aabb intersection step
         :param background_brightness: float background brightness, 1.0 = white
         :param ndc: NDCConfig, NDC coordinate configuration,
                     namedtuple(width, height, focal).
                     None = no NDC, use usual coordinates
-        :param min_comp: minimum SH/SG component to render
-        :param max_comp: maximum SH/SG component to render, -1=last
+        :param min_comp: minimum SH/SG component to render.
+        :param max_comp: maximum SH/SG component to render, -1=last.
+                         Set :code:`min_comp = max_comp` to render a particular
+                         component. Default means all.
+        :param density_softplus: if true, applies :math:`\\log(1 + \\exp(sigma - 1))`.
+                                 **Mind the shift -1!** (from mip-NeRF).
+                                 Please note softplus will NOT be compatible with volrend,
+                                 please pre-apply it .
+        :param rgb_padding: to avoid oversaturating the sigmoid,
+                        applies :code:`* (1 + 2 * rgb_padding) - rgb_padding` to
+                        colors after sigmoid (from mip-NeRF).
+                        Please note the padding will NOT be compatible with volrend,
+                        although most likely the effect is very small.
+                        0.001 is a reasonable value to try.
 
         """
         super().__init__()
@@ -142,6 +167,8 @@ class VolumeRenderer(nn.Module):
         self.ndc_config = ndc
         self.min_comp = min_comp
         self.max_comp = max_comp
+        self.density_softplus = density_softplus
+        self.rgb_padding = rgb_padding
         if isinstance(tree.data_format, DataFormat):
             self._data_format = None
         else:
@@ -160,7 +187,7 @@ class VolumeRenderer(nn.Module):
 
         :param rays: namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)
         :param cuda: whether to use CUDA kernel if available. If false,
-                     uses only PyTorch version.
+                     uses only PyTorch version. *Only True supported right now*
         :param fast: if True, enables faster evaluation, potentially leading
                      to some loss of accuracy.
 
@@ -174,7 +201,7 @@ class VolumeRenderer(nn.Module):
             warn("Using slow volume rendering")
             def dda_unit(cen, invdir):
                 """
-                DDA ray tracing step
+                voxel aabb ray tracing step
 
                 :param cen: jnp.ndarray [B, 3] center
                 :param invdir: jnp.ndarray [B, 3] 1/dir
@@ -266,7 +293,7 @@ class VolumeRenderer(nn.Module):
         :param fx: float output image focal length (x)
         :param fy: float output image focal length (y), if not specified uses fx
         :param cuda: whether to use CUDA kernel if available. If false,
-                     uses only PyTorch version.
+                     uses only PyTorch version. *Only True supported right now*
         :param fast: if True, enables faster evaluation, potentially leading
                      to some loss of accuracy.
 
@@ -309,7 +336,8 @@ class VolumeRenderer(nn.Module):
             return _VolumeRenderImageFunction.apply(
                 self.tree.data,
                 self.tree._spec(),
-                _make_camera_spec(c2w, width, height, fx, fy),
+                _make_camera_spec(c2w.to(dtype=self.tree.data.dtype),
+                                  width, height, fx, fy),
                 self._get_options(fast)
             )
 
@@ -329,9 +357,12 @@ class VolumeRenderer(nn.Module):
         opts.basis_dim = self.data_format.basis_dim
         opts.min_comp = self.min_comp
         opts.max_comp = self.max_comp
-        
+
         if self.max_comp < 0:
             opts.max_comp += opts.basis_dim
+
+        opts.density_softplus = self.density_softplus
+        opts.rgb_padding = self.rgb_padding
 
         if self.ndc_config is not None:
             opts.ndc_width = self.ndc_config.width

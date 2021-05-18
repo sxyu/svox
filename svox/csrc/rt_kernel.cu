@@ -83,6 +83,12 @@ __device__ __constant__ const float C4[] = {
 };
 
 
+#define _SOFTPLUS_M1(x) (logf(1 + expf(x - 1)))
+#define _SIGMOID(x) (1 / (1 + expf(-x)))
+#define _RGB_PAD(x, p) (x * (1 + 2 * p) - p)
+#define _D_RGB_PAD(p) (1 + 2 * p)
+#define _D_SOFTPLUS_M1(x) (1 / (1 + expf(1 - x)))
+
 template<typename scalar_t>
 __host__ __device__ __inline__ static scalar_t _norm(
                 scalar_t* dir) {
@@ -203,7 +209,7 @@ __device__ __inline__ void _dda_unit(
         const scalar_t* __restrict__ invdir,
         scalar_t* __restrict__ tmin,
         scalar_t* __restrict__ tmax) {
-    // Perform DDA for 1 iteration on a unit cube
+    // Intersect unit AABB
     scalar_t t1, t2;
     *tmin = 0.0f;
     *tmax = 1e9f;
@@ -255,6 +261,7 @@ __device__ __inline__ void trace_ray(
         scalar_t light_intensity = 1.f;
         scalar_t t = tmin;
         scalar_t cube_sz;
+        const scalar_t d_rgb_pad = 1 + 2 * opt.rgb_padding;
         while (t < tmax) {
             for (int j = 0; j < 3; ++j) {
                 pos[j] = ray.origin[j] + t * ray.dir[j];
@@ -270,7 +277,8 @@ __device__ __inline__ void trace_ray(
 
             const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
             const scalar_t delta_t = t_subcube + opt.step_size;
-            const scalar_t sigma = tree_val[data_dim - 1];
+            scalar_t sigma = tree_val[data_dim - 1];
+            if (opt.density_softplus) sigma = _SOFTPLUS_M1(sigma);
             if (sigma > opt.sigma_thresh) {
                 att = expf(-delta_t * delta_scale * sigma);
                 const scalar_t weight = light_intensity * (1.f - att);
@@ -282,17 +290,21 @@ __device__ __inline__ void trace_ray(
                         for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
                             tmp += basis_fn[i] * tree_val[off + i];
                         }
-                        out[t] += weight / (1.0 + expf(-tmp));
+                        out[t] += weight * (_SIGMOID(tmp) * d_rgb_pad - opt.rgb_padding);
                     }
                 } else {
                     for (int j = 0; j < out_data_dim; ++j) {
-                        out[j] += weight / (1.0 + expf(-tree_val[j]));
+                        out[j] += weight * (_SIGMOID(tree_val[j]) * d_rgb_pad - opt.rgb_padding);
                     }
                 }
                 light_intensity *= att;
 
                 if (tree.weight_accum != nullptr) {
-                    tree.weight_accum[node_id] += weight;
+                    if (tree.weight_accum_max) {
+                        atomicMax(&tree.weight_accum[node_id], weight);
+                    } else {
+                        atomicAdd(&tree.weight_accum[node_id], weight);
+                    }
                 }
 
                 if (light_intensity <= opt.stop_thresh) {
@@ -345,6 +357,7 @@ __device__ __inline__ void trace_ray_backward(
                 ray.vdir, basis_fn);
 
         scalar_t accum = 0.0;
+        const scalar_t d_rgb_pad = 1 + 2 * opt.rgb_padding;
         // PASS 1
         {
             scalar_t light_intensity = 1.f, t = tmin, cube_sz;
@@ -363,7 +376,8 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + opt.step_size;
-                const scalar_t sigma = tree_val[data_dim - 1];
+                scalar_t sigma = tree_val[data_dim - 1];
+                if (opt.density_softplus) sigma = _SOFTPLUS_M1(sigma);
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -376,23 +390,25 @@ __device__ __inline__ void trace_ray_backward(
                             for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
                                 tmp += basis_fn[i] * tree_val[off + i];
                             }
-                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-tmp));
+                            const scalar_t sigmoid = _SIGMOID(tmp);
                             const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
                             for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
                                 const scalar_t toadd = weight * basis_fn[i] *
-                                    grad_sigmoid * grad_output[t];
+                                    grad_sigmoid * grad_output[t] * d_rgb_pad;
                                 atomicAdd(&grad_tree_val[off + i],
                                         toadd);
                             }
-                            total_color += sigmoid * grad_output[t];
+                            total_color += (sigmoid * d_rgb_pad - opt.rgb_padding)
+                                            * grad_output[t];
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            const scalar_t sigmoid = 1.0 / (1.0 + expf(-tree_val[j]));
+                            const scalar_t sigmoid = _SIGMOID(tree_val[j]);
                             const scalar_t toadd = weight * sigmoid * (
-                                    1.f - sigmoid) * grad_output[j];
+                                    1.f - sigmoid) * grad_output[j] * d_rgb_pad;
                             atomicAdd(&grad_tree_val[j], toadd);
-                            total_color += sigmoid * grad_output[j];
+                            total_color += (sigmoid * d_rgb_pad - opt.rgb_padding)
+                                            * grad_output[j];
                         }
                     }
                     light_intensity *= att;
@@ -423,7 +439,9 @@ __device__ __inline__ void trace_ray_backward(
 
                 const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
                 const scalar_t delta_t = t_subcube + opt.step_size;
-                const scalar_t sigma = tree_val[data_dim - 1];
+                scalar_t sigma = tree_val[data_dim - 1];
+                const scalar_t raw_sigma = sigma;
+                if (opt.density_softplus) sigma = _SOFTPLUS_M1(sigma);
                 if (sigma > 0.0) {
                     att = expf(-delta_t * sigma * delta_scale);
                     const scalar_t weight = light_intensity * (1.f - att);
@@ -436,11 +454,13 @@ __device__ __inline__ void trace_ray_backward(
                             for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
                                 tmp += basis_fn[i] * tree_val[off + i];
                             }
-                            total_color += 1.0 / (1.0 + expf(-tmp)) * grad_output[t];
+                            total_color += (_SIGMOID(tmp) * d_rgb_pad - opt.rgb_padding)
+                                            * grad_output[t];
                         }
                     } else {
                         for (int j = 0; j < out_data_dim; ++j) {
-                            total_color += 1.0 / (1.0 + expf(-tree_val[j])) * grad_output[j];
+                            total_color += (_SIGMOID(tree_val[j]) * d_rgb_pad - opt.rgb_padding)
+                                            * grad_output[j];
                         }
                     }
                     light_intensity *= att;
@@ -449,6 +469,9 @@ __device__ __inline__ void trace_ray_backward(
                             &grad_tree_val[data_dim - 1],
                             delta_t * delta_scale * (
                                 total_color * light_intensity - accum)
+                                *  (opt.density_softplus ?
+                                    _D_SOFTPLUS_M1(raw_sigma)
+                                    : 1)
                             );
                 }
                 t += delta_t;
@@ -645,7 +668,7 @@ __device__ __inline__ void grid_trace_ray(
 
             const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
             const scalar_t delta_t = t_subcube + step_size;
-            const scalar_t sigma = data[u][v][w];
+            scalar_t sigma = data[u][v][w];
             if (sigma > sigma_thresh) {
                 att = expf(-delta_t * delta_scale * sigma);
                 const scalar_t weight = light_intensity * (1.f - att);

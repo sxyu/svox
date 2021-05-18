@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Quick Guide &mdash; svox 0.2.30 documentation</title>
+  <title>Quick Guide &mdash; svox 0.2.31-dev documentation</title>
   
 
   
@@ -189,7 +189,7 @@ version as you have installed on your system.</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span> <span class="nn">svox</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">=</span><span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="p">(</span><span class="n">data_dim</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">data_format</span><span class="o">=</span><span class="s2">&quot;RGBA&quot;</span><span class="p">,</span>
 <span class="go">                  center=[0.5, 0.5, 0.5], radius=0.5,</span>
-<span class="go">                  N=2, map_location=&quot;cpu&quot;,</span>
+<span class="go">                  N=2, device=&quot;cpu&quot;,</span>
 <span class="go">                  init_refine=0, depth_limit=10,</span>
 <span class="go">                  extra_data=None)</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">t</span><span class="o">.</span><span class="n">cuda</span><span class="p">()</span>
@@ -206,7 +206,7 @@ data_dim should be <code class="code docutils literal notranslate"><span class="
 For SH (spherical harmonics), basis_dim must be a square number at most 25. SG (spherical Gaussians) and ASG (anisotropic SG) require <code class="code docutils literal notranslate"><span class="pre">extra_data</span></code> field to render properly.</p></li>
 <li><p><code class="code docutils literal notranslate"><span class="pre">radius</span></code> and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specify the transform of the tree in space, with <code class="code docutils literal notranslate"><span class="pre">radius</span></code> meaning the half-edge length of the bounding cube (1 float or list of 3 floats for each axis) and <code class="code docutils literal notranslate"><span class="pre">center</span></code> specifying the center of the cube (list of 3 floats).  By default cube is centered at <code class="code docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></code> with radius 0.5.</p></li>
 <li><p><code class="code docutils literal notranslate"><span class="pre">N</span></code> (optional, default 2) is the N in <span class="math notranslate nohighlight">\(N^3\)</span> tree. Typically, put <code class="code docutils literal notranslate"><span class="pre">N=2</span></code> for an octree.</p></li>
-<li><p><code class="code docutils literal notranslate"><span class="pre">map_location</span></code> (optional, default cpu) can be a string like ‘cuda’ and is where the tree’s data will be stored.</p></li>
+<li><p><code class="code docutils literal notranslate"><span class="pre">device</span></code> (optional, default cpu) can be a string like ‘cuda’ and is where the tree’s data will be stored.</p></li>
 <li><p><code class="code docutils literal notranslate"><span class="pre">init_refine</span></code> specifies initial LOD of the tree: the initial leaf voxel size will be <code class="code docutils literal notranslate"><span class="pre">N^(init_refine</span> <span class="pre">+</span> <span class="pre">1)</span></code>.</p></li>
 <li><p><code class="code docutils literal notranslate"><span class="pre">depth_limit</span></code> is a utility for limiting the maximum depth of any tree leaf after refinement.  Note that the root is at depth -1, which may be a bit confusing; initially the tree has maximum depth 1 and <code class="code docutils literal notranslate"><span class="pre">NxNxN</span></code> leaves.</p></li>
 <li><p><code class="code docutils literal notranslate"><span class="pre">extra_data</span></code> for SG, basis_dim x 4 matrix of variance/mean (3). For ASG, data_dim x 11 matrix.
@@ -221,10 +221,10 @@ corresponding data.</p>
 <h2>Saving and Loading<a class="headerlink" href="#saving-and-loading" title="Permalink to this headline">¶</a></h2>
 <p>To save and load trees to/from npz files, use</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">npz_path</span><span class="p">)</span>
-<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">npz_path</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">N3Tree</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">npz_path</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>‘map_location’ can be a string like ‘cuda’ and is where the tree’s data will be loaded into, similar
+<p>‘device’ can be a string like ‘cuda’ and is where the tree’s data will be loaded into, similar
 to that in the constructor.
 Since the tree is a PyTorch module, you could also use a PyTorch checkpoint, but it can be VERY inefficient.</p>
 </div>
@@ -346,24 +346,28 @@ which returns points and lengths in local coordinates <span class="math notransl
 <div class="section" id="advanced-volume-rendering-weight-accumulator-context">
 <h2>Advanced: Volume Rendering Weight Accumulator Context<a class="headerlink" href="#advanced-volume-rendering-weight-accumulator-context" title="Permalink to this headline">¶</a></h2>
 <p>Sometimes we want to accumulate volume rendering weights in each tree leaf,
-to see how much each leaf was used in the rendering process.
+to see how much each leaf voxel was used in the rendering process.
+We may either want the max or total rendering weight (influence) within each voxel.
 We have a built-in context manager to do so.</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">tree</span><span class="o">.</span><span class="n">accumulate_weights</span><span class="p">()</span> <span class="k">as</span> <span class="n">accum</span><span class="p">:</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">tree</span><span class="o">.</span><span class="n">accumulate_weights</span><span class="p">(</span><span class="n">op</span><span class="o">=</span><span class="s2">&quot;sum&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">accum</span><span class="p">:</span>  <span class="c1"># or op=&quot;max&quot;</span>
 <span class="gp">&gt;&gt;&gt; </span>    <span class="c1"># Do some ray/image rendering with a renderer on the tree</span>
 <span class="gp">&gt;&gt;&gt; </span>    <span class="c1"># Tree cannot be refined or shrank here</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">accum</span> <span class="o">=</span> <span class="n">accum</span><span class="p">()</span>
 </pre></div>
 </div>
 <p>The final <code class="code docutils literal notranslate"><span class="pre">accum</span></code> is a float tensor of shape
-equal to the number of leaves in the tree which can
+equal to tree.n_leaves which can
 be used to index into the tree.
-Each entry is equal to the sum of all volume rendering weights
+Each entry is equal to the <em>sum</em> of all volume rendering <em>weights</em>
 for all rays which every hit the voxel within the context.
 You can use it as follows:</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">accum</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">]</span><span class="o">.</span><span class="n">refine</span><span class="p">()</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">tree</span><span class="p">[</span><span class="n">accum</span> <span class="o">&lt;</span> <span class="mf">1.0</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
 </pre></div>
 </div>
+<p><em>Advanced</em>: You can also use <code class="code docutils literal notranslate"><span class="pre">accum.value</span></code> to grab the complete
+accumulated tensor of size equal to <code class="code docutils literal notranslate"><span class="pre">tree.data</span></code>.
+This is more efficient than using <code class="code docutils literal notranslate"><span class="pre">accum()</span></code>.</p>
 </div>
 </div>
 

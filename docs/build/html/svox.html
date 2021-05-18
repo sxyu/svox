@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Reference &mdash; svox 0.2.30 documentation</title>
+  <title>Reference &mdash; svox 0.2.31-dev documentation</title>
   
 
   
@@ -178,7 +178,7 @@
 <h2>N^3-Tree<a class="headerlink" href="#n-3-tree" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
 <dt id="svox.N3Tree">
-<em class="property"><span class="pre">class</span> </em><code class="sig-name descname"><span class="pre">N3Tree</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_reserve</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_refine</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geom_resize_fact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">radius</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'RGBA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span> </em><code class="sig-name descname"><span class="pre">N3Tree</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_reserve</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_refine</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geom_resize_fact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">radius</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'RGBA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">torch.nn.modules.module.Module</span></code></p>
 <p>PyTorch <span class="math notranslate nohighlight">\(N^3\)</span>-tree library with CUDA acceleration.
 By <span class="math notranslate nohighlight">\(N^3\)</span>-tree we mean a 3D tree with branching factor N at each interior node,
@@ -188,12 +188,12 @@ where <span class="math notranslate nohighlight">\(N=2\)</span> is the familiar 
 <p><cite>nn.Parameters</cite> can change size, which
 makes current optimizers invalid. If any <code class="code docutils literal notranslate"><span class="pre">refine():</span> <span class="pre">or</span>
 <span class="pre">:code:`shrink_to_fit()</span></code> call returns True,
-or <code class="code docutils literal notranslate"><span class="pre">expand(),</span> <span class="pre">shrink()</span></code> is used, 
+or <code class="code docutils literal notranslate"><span class="pre">expand(),</span> <span class="pre">shrink()</span></code> is used,
 please re-make any optimizers</p>
 </div>
 <dl class="py method">
 <dt id="svox.N3Tree.__init__">
-<code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_reserve</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_refine</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geom_resize_fact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">radius</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'RGBA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth_limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_reserve</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_refine</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">geom_resize_fact</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">radius</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0.5,</span> <span class="pre">0.5,</span> <span class="pre">0.5]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'RGBA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extra_data</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Construct N^3 Tree</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
@@ -215,7 +215,9 @@ initial max_depth will be init_refine.</p></li>
 <li><p><strong>center</strong> – list center of space</p></li>
 <li><p><strong>data_format</strong> – a string to indicate the data format. <code class="code docutils literal notranslate"><span class="pre">RGBA</span> <span class="pre">|</span> <span class="pre">SH#</span> <span class="pre">|</span> <span class="pre">SG#</span> <span class="pre">|</span> <span class="pre">ASG#</span></code></p></li>
 <li><p><strong>extra_data</strong> – extra data to include with tree</p></li>
-<li><p><strong>map_location</strong> – str device to put data</p></li>
+<li><p><strong>device</strong> – str device to put data</p></li>
+<li><p><strong>dtype</strong> – str tree data type, torch.float32 (default) | torch.float64</p></li>
+<li><p><strong>map_location</strong> – str DEPRECATED old name for device (will override device and warn)</p></li>
 </ul>
 </dd>
 </dl>
@@ -273,7 +275,7 @@ uses only PyTorch version.</p></li>
 
 <dl class="py method">
 <dt id="svox.N3Tree.partial">
-<code class="sig-name descname"><span class="pre">partial</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_sel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.partial" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname"><span class="pre">partial</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_sel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.partial" title="Permalink to this definition">¶</a></dt>
 <dd><p>Get partial tree with some of the data dimensions (channels)
 E.g. <code class="code docutils literal notranslate"><span class="pre">tree.partial(-1)</span></code> to get tree with data_dim 1 of last channel only</p>
 <dl class="field-list simple">
@@ -281,6 +283,7 @@ E.g. <code class="code docutils literal notranslate"><span class="pre">tree.part
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>data_sel</strong> – data channel selector, default is all channels</p></li>
 <li><p><strong>data_format</strong> – data format for new tree, default is current format</p></li>
+<li><p><strong>dtype</strong> – new data type, torch.float32 | torch.float64</p></li>
 <li><p><strong>device</strong> – where to put result tree</p></li>
 </ul>
 </dd>
@@ -528,8 +531,14 @@ This is called by the <code class="code docutils literal notranslate"><span clas
 
 <dl class="py method">
 <dt id="svox.N3Tree.accumulate_weights">
-<code class="sig-name descname"><span class="pre">accumulate_weights</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.accumulate_weights" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname"><span class="pre">accumulate_weights</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">op</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">str</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">'sum'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.accumulate_weights" title="Permalink to this definition">¶</a></dt>
 <dd><p>Begin weight accumulation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>op</strong> – reduction to apply weight in each voxel,
+sum | max</p>
+</dd>
+</dl>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
 <p>Weight accumulator has not been validated
@@ -565,13 +574,15 @@ and may have bugs</p>
 
 <dl class="py method">
 <dt id="svox.N3Tree.load">
-<em class="property"><span class="pre">classmethod</span> </em><code class="sig-name descname"><span class="pre">load</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.load" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">classmethod</span> </em><code class="sig-name descname"><span class="pre">load</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.load" title="Permalink to this definition">¶</a></dt>
 <dd><p>Load from npz file</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>path</strong> – npz path</p></li>
-<li><p><strong>map_location</strong> – device to put data</p></li>
+<li><p><strong>device</strong> – str device to put data</p></li>
+<li><p><strong>dtype</strong> – str torch.float32 (default) | torch.float64</p></li>
+<li><p><strong>map_location</strong> – str DEPRECATED old name for device</p></li>
 </ul>
 </dd>
 </dl>
@@ -806,24 +817,45 @@ FIXME: inefficient</p>
 <h2>Differentiable Volume Renderer<a class="headerlink" href="#differentiable-volume-renderer" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
 <dt id="svox.VolumeRenderer">
-<em class="property"><span class="pre">class</span> </em><code class="sig-name descname"><span class="pre">VolumeRenderer</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">background_brightness</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndc</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">svox.renderer.NDCConfig</span><span class="p"><span class="pre">]</span></span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer" title="Permalink to this definition">¶</a></dt>
+<em class="property"><span class="pre">class</span> </em><code class="sig-name descname"><span class="pre">VolumeRenderer</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">background_brightness</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndc</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">svox.renderer.NDCConfig</span><span class="p"><span class="pre">]</span></span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_comp</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">int</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_comp</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">int</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">density_softplus</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">bool</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb_padding</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer" title="Permalink to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">torch.nn.modules.module.Module</span></code></p>
 <p>Volume renderer</p>
 <dl class="py method">
 <dt id="svox.VolumeRenderer.__init__">
-<code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">background_brightness</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndc</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">svox.renderer.NDCConfig</span><span class="p"><span class="pre">]</span></span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_comp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.__init__" title="Permalink to this definition">¶</a></dt>
+<code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">background_brightness</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndc</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">svox.renderer.NDCConfig</span><span class="p"><span class="pre">]</span></span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_comp</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">int</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_comp</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">int</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">density_softplus</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">bool</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb_padding</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.__init__" title="Permalink to this definition">¶</a></dt>
 <dd><p>Construct volume renderer associated with given N^3 tree.</p>
+<p>The renderer traces rays with origins/dirs within the octree boundaries,
+detection ray-voxel intersections. The color and density within
+each voxel is assumed constant, and no interpolation is performed.</p>
+<p>For each intersection point, it queries the tree, assuming the last data dimension
+is density (sigma) and the rest of the dimensions are color,
+formatted according to tree.data_format.
+It then applies SH/SG/ASG basis functions, if any, according to viewdirs.
+Sigmoid will be applied to these colors to normalize them,
+and optionally a shifted softplus is applied to the density.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>tree</strong> – N3Tree instance for rendering</p></li>
-<li><p><strong>step_size</strong> – float step size eps, added to each DDA step</p></li>
+<li><p><strong>step_size</strong> – float step size eps, added to each voxel aabb intersection step</p></li>
 <li><p><strong>background_brightness</strong> – float background brightness, 1.0 = white</p></li>
 <li><p><strong>ndc</strong> – NDCConfig, NDC coordinate configuration,
 namedtuple(width, height, focal).
 None = no NDC, use usual coordinates</p></li>
-<li><p><strong>min_comp</strong> – minimum SH/SG component to render</p></li>
-<li><p><strong>max_comp</strong> – maximum SH/SG component to render, -1=last</p></li>
+<li><p><strong>min_comp</strong> – minimum SH/SG component to render.</p></li>
+<li><p><strong>max_comp</strong> – maximum SH/SG component to render, -1=last.
+Set <code class="code docutils literal notranslate"><span class="pre">min_comp</span> <span class="pre">=</span> <span class="pre">max_comp</span></code> to render a particular
+component. Default means all.</p></li>
+<li><p><strong>density_softplus</strong> – if true, applies <span class="math notranslate nohighlight">\(\log(1 + \exp(sigma - 1))\)</span>.
+<strong>Mind the shift -1!</strong> (from mip-NeRF).
+Please note softplus will NOT be compatible with volrend,
+please pre-apply it .</p></li>
+<li><p><strong>rgb_padding</strong> – to avoid oversaturating the sigmoid,
+applies <code class="code docutils literal notranslate"><span class="pre">*</span> <span class="pre">(1</span> <span class="pre">+</span> <span class="pre">2</span> <span class="pre">*</span> <span class="pre">rgb_padding)</span> <span class="pre">-</span> <span class="pre">rgb_padding</span></code> to
+colors after sigmoid (from mip-NeRF).
+Please note the padding will NOT be compatible with volrend,
+although most likely the effect is very small.
+0.001 is a reasonable value to try.</p></li>
 </ul>
 </dd>
 </dl>
@@ -837,18 +869,17 @@ None = no NDC, use usual coordinates</p></li>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>rays</strong> – namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)</p></li>
-<li><p><strong>rgba</strong> – (B, rgb_dim + 1)
-where <em>rgb_dim</em> is <code class="code docutils literal notranslate"><span class="pre">tree.data_dim</span> <span class="pre">-</span> <span class="pre">1</span></code> if
-<code class="code docutils literal notranslate"><span class="pre">data_format.format</span> <span class="pre">==</span> <span class="pre">RGBA</span></code>
-or <code class="code docutils literal notranslate"><span class="pre">data_format.basis_dim</span> <span class="pre">*</span> <span class="pre">3</span></code> else</p></li>
 <li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
-uses only PyTorch version.</p></li>
+uses only PyTorch version. <em>Only True supported right now</em></p></li>
 <li><p><strong>fast</strong> – if True, enables faster evaluation, potentially leading
 to some loss of accuracy.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>(B, 3)</p>
+<dd class="field-even"><p><code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">rgb_dim)</span></code>.
+Where <em>rgb_dim</em> is <code class="code docutils literal notranslate"><span class="pre">tree.data_dim</span> <span class="pre">-</span> <span class="pre">1</span></code> if
+<code class="code docutils literal notranslate"><span class="pre">data_format.format</span> <span class="pre">==</span> <span class="pre">DataFormat.RGBA</span></code>
+or <code class="code docutils literal notranslate"><span class="pre">(tree.data_dim</span> <span class="pre">-</span> <span class="pre">1)</span> <span class="pre">/</span> <span class="pre">tree.data_format.basis_dim</span></code> else.</p>
 </dd>
 </dl>
 </dd></dl>
@@ -866,7 +897,7 @@ to some loss of accuracy.</p></li>
 <li><p><strong>fx</strong> – float output image focal length (x)</p></li>
 <li><p><strong>fy</strong> – float output image focal length (y), if not specified uses fx</p></li>
 <li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
-uses only PyTorch version.</p></li>
+uses only PyTorch version. <em>Only True supported right now</em></p></li>
 <li><p><strong>fast</strong> – if True, enables faster evaluation, potentially leading
 to some loss of accuracy.</p></li>
 </ul>

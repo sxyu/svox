@@ -70,7 +70,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("extra_data", &TreeSpec::extra_data)
         .def_readwrite("offset", &TreeSpec::offset)
         .def_readwrite("scaling", &TreeSpec::scaling)
-        .def_readwrite("_weight_accum", &TreeSpec::_weight_accum);
+        .def_readwrite("_weight_accum", &TreeSpec::_weight_accum)
+        .def_readwrite("_weight_accum_max", &TreeSpec::_weight_accum_max);
 
     py::class_<CameraSpec>(m, "CameraSpec")
         .def(py::init<>())
@@ -93,7 +94,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def_readwrite("min_comp", &RenderOptions::min_comp)
         .def_readwrite("max_comp", &RenderOptions::max_comp)
         .def_readwrite("sigma_thresh", &RenderOptions::sigma_thresh)
-        .def_readwrite("stop_thresh", &RenderOptions::stop_thresh);
+        .def_readwrite("stop_thresh", &RenderOptions::stop_thresh)
+        .def_readwrite("density_softplus", &RenderOptions::density_softplus)
+        .def_readwrite("rgb_padding", &RenderOptions::rgb_padding);
 
     m.def("query_vertical", &query_vertical);
     m.def("query_vertical_backward", &query_vertical_backward);

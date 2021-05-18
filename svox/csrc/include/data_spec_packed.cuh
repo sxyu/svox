@@ -62,7 +62,9 @@ struct PackedTreeSpec {
         extra_data(tree.extra_data.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>()),
         offset(tree.offset.data<scalar_t>()),
         scaling(tree.scaling.data<scalar_t>()),
-        weight_accum(tree._weight_accum.numel() > 0 ? tree._weight_accum.data<scalar_t>() : nullptr) { }
+        weight_accum(tree._weight_accum.numel() > 0 ? tree._weight_accum.data<scalar_t>() : nullptr),
+        weight_accum_max(tree._weight_accum_max)
+     { }
 
     torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits>
         data;
@@ -75,6 +77,7 @@ struct PackedTreeSpec {
     const scalar_t* __restrict__ offset;
     const scalar_t* __restrict__ scaling;
     scalar_t* __restrict__ weight_accum;
+    bool weight_accum_max;
 };
 
 template<class scalar_t>

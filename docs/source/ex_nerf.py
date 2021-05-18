@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 device = 'cuda:0'
 
-t = svox.N3Tree.load("lego.npz", map_location=device)
+t = svox.N3Tree.load("lego.npz", device=device)
 r = svox.VolumeRenderer(t)
 
 # Matrix copied from lego test set image 0

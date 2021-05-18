@@ -34,7 +34,7 @@ class N3TreeView:
             local = True
         if isinstance(key, tuple) and len(key) >= 3:
             # Handle tree[x, y, z[, c]]
-            main_key = torch.tensor(key[:3], dtype=torch.float32,
+            main_key = torch.tensor(key[:3], dtype=tree.data.dtype,
                         device=tree.data.device).reshape(1, 3)
             if len(key) > 3:
                 key = (main_key, *key[3:])
@@ -43,8 +43,8 @@ class N3TreeView:
         leaf_key = key[0] if isinstance(key, tuple) else key
         if torch.is_tensor(leaf_key) and leaf_key.ndim == 2 and leaf_key.shape[1] == 3:
             # Handle tree[P[, c]] where P is a (B, 3) matrix of 3D points
-            if leaf_key.dtype != torch.float32:
-                leaf_key = leaf_key.float()
+            if leaf_key.dtype != tree.data.dtype:
+                leaf_key = leaf_key.to(dtype=tree.data.dtype)
             val, target = tree.forward(leaf_key, want_node_ids=True, world=not local)
             self._packed_ids = target.clone()
             leaf_node = (*tree._unpack_index(target).T,)
