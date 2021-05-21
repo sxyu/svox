@@ -1109,7 +1109,7 @@ class WeightAccumulator():
     def __enter__(self):
         self.tree._lock_tree_structure = True
         self.tree._weight_accum = torch.zeros(
-                self.tree.child.shape, dtype=self.data.dtype,
+                self.tree.child.shape, dtype=self.tree.data.dtype,
                 device=self.tree.data.device)
         self.tree._weight_accum_op = self.op
         self.weight_accum = self.tree._weight_accum
