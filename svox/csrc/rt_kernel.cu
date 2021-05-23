@@ -868,6 +868,35 @@ __global__ void se_grad_kernel(
 }
 
 template <typename scalar_t>
+__global__ void se_grad_persp_kernel(
+    PackedTreeSpec<scalar_t> tree,
+    PackedCameraSpec<scalar_t> cam,
+    RenderOptions opt,
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        color_ref,
+    torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
+        color_out,
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits> grad_out,
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits> hessdiag_out) {
+    CUDA_GET_THREAD_ID(tid, cam.width * cam.height);
+    int iy = tid / cam.width, ix = tid % cam.width;
+    scalar_t dir[3], origin[3];
+    cam2world_ray(ix, iy, dir, origin, cam);
+    scalar_t vdir[3] = {dir[0], dir[1], dir[2]};
+    maybe_world2ndc(opt, dir, origin);
+
+    transform_coord<scalar_t>(origin, tree.offset, tree.scaling);
+    trace_ray_se_grad_hess<scalar_t>(
+        tree,
+        SingleRaySpec<scalar_t>{origin, dir, vdir},
+        opt,
+        color_ref[iy][ix],
+        color_out[iy][ix],
+        grad_out,
+        hessdiag_out);
+}
+
+template <typename scalar_t>
 __device__ __inline__ void grid_trace_ray(
     const torch::PackedTensorAccessor32<scalar_t, 3, torch::RestrictPtrTraits>
         data,
@@ -1109,6 +1138,39 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> se_grad(
     return std::template tuple<torch::Tensor, torch::Tensor, torch::Tensor>(result, grad, hessdiag);
 }
 
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> se_grad_persp(
+                            TreeSpec& tree,
+                            CameraSpec& cam,
+                            RenderOptions& opt,
+                            torch::Tensor color) {
+    tree.check();
+    cam.check();
+    DEVICE_GUARD(tree.data);
+    CHECK_INPUT(color);
+    const size_t Q = size_t(cam.width) * cam.height;
+
+    auto_cuda_threads();
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    if (out_data_dim > 4) {
+        throw std::runtime_error("Tree's output dim cannot be > 4 for se_grad");
+    }
+    torch::Tensor result = torch::zeros({cam.height, cam.width, out_data_dim},
+            tree.data.options());
+    torch::Tensor grad = torch::zeros_like(tree.data);
+    torch::Tensor hessdiag = torch::zeros_like(tree.data);
+
+    AT_DISPATCH_FLOATING_TYPES(tree.data.type(), __FUNCTION__, [&] {
+            device::se_grad_persp_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
+                    tree, cam, opt,
+                    color.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
+                    result.packed_accessor32<scalar_t, 3, torch::RestrictPtrTraits>(),
+                    grad.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>(),
+                    hessdiag.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>());
+    });
+    CUDA_CHECK_ERRORS;
+    return std::template tuple<torch::Tensor, torch::Tensor, torch::Tensor>(result, grad, hessdiag);
+}
 std::vector<torch::Tensor> grid_weight_render(
     torch::Tensor data, CameraSpec& cam, RenderOptions& opt,
     torch::Tensor offset, torch::Tensor scaling) {

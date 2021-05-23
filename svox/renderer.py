@@ -326,11 +326,12 @@ class VolumeRenderer(nn.Module):
         :math:`\\frac{1}{2} \\sum_{r \\in \\mathcal{R}} (\\hat{C}(r) - C(r))^2`
         where :math:`\\hat{C}(r)` is computed from the ray and
         :math:`C(r)` comes from the provided tensor :code:`colors`.
+        This is the arbitrary ray-batch version of :code:`se_grad`.
         This is useful for diagonal NNLS methods for scaling step sizes.
         Note currently the Hessian is actually the squared norm of Jacobian rows
         as in Gauss-Newton algorithms.
-        
-        The tree's rendered output dimension (rgb_dim) cannot 
+
+        The tree's rendered output dimension (rgb_dim) cannot
         be greater than 4 (this is almost always true, don't need to worry).
 
         :param rays: namedtuple :code:`svox.Rays` of origins
@@ -342,10 +343,44 @@ class VolumeRenderer(nn.Module):
         """
         if _C is None or not self.tree.data.is_cuda:
             assert False, "Not supported in current version, use CUDA kernel"
-        tree = self.tree._spec()
-        rays_spec = _rays_spec_from_rays(rays)
-        opt = self._get_options(False)
-        return _C.se_grad(tree, rays_spec, colors, opt)
+        return _C.se_grad(self.tree._spec(), _rays_spec_from_rays(rays),
+                          colors, self._get_options(False))
+
+    def se_grad_persp(self, c2w, colors, width=800, height=800, fx=1111.111, fy=None):
+        """
+        Returns rendered color + gradient and Hessian diagonal of the total
+        squared error:
+        :math:`\\frac{1}{2} \\sum_{r \\in \\mathcal{R}} (\\hat{C}(r) - C(r))^2`
+        where :math:`\\hat{C}(r)` is computed from the ray and
+        :math:`C(r)` comes from the provided tensor :code:`colors`.
+        This is the image-batch version of :code:`se_grad`.
+        This is useful for diagonal NNLS methods for scaling step sizes.
+        Note currently the Hessian is actually the squared norm of Jacobian rows
+        as in Gauss-Newton algorithms.
+
+        The tree's rendered output dimension (rgb_dim) cannot
+        be greater than 4 (this is almost always true, don't need to worry).
+
+        :param c2w: torch.Tensor (3, 4) or (4, 4) camera pose matrix (c2w)
+        :param colors: torch.Tensor :code:`(H, W, 3)` reference colors
+        :param width: int output image width
+        :param height: int output image height
+        :param fx: float output image focal length (x)
+        :param fy: float output image focal length (y), if not specified uses fx
+
+        :return: :code:`colors (H, W, rgb_dim), grad (shape of tree.data),
+                               diag_hessian (shape of tree.data)`
+        """
+        if fy is None:
+            fy = fx
+        if _C is None or not self.tree.data.is_cuda:
+            assert False, "Not supported in current version, use CUDA kernel"
+        return _C.se_grad_persp(
+            self.tree._spec(),
+            _make_camera_spec(c2w.to(dtype=self.tree.data.dtype),
+                              width, height, fx, fy),
+            self._get_options(False),
+            colors)
 
     @staticmethod
     def persp_rays(c2w, width=800, height=800, fx=1111.111, fy=None):

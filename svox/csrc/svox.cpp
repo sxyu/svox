@@ -53,6 +53,8 @@ Tensor volume_render_image_backward(TreeSpec&, CameraSpec&, RenderOptions&,
 
 std::tuple<Tensor, Tensor, Tensor> se_grad(TreeSpec&, RaysSpec&, Tensor,
                                            RenderOptions&);
+std::tuple<Tensor, Tensor, Tensor> se_grad_persp(TreeSpec&, CameraSpec&,
+                                                 RenderOptions&, Tensor);
 
 Tensor calc_corners(TreeSpec&, Tensor);
 
@@ -111,6 +113,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("volume_render_image_backward", &volume_render_image_backward);
 
     m.def("se_grad", &se_grad);
+    m.def("se_grad_persp", &se_grad_persp);
 
     m.def("calc_corners", &calc_corners);
 
