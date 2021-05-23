@@ -152,5 +152,6 @@ std::tuple<torch::Tensor, torch::Tensor> quantize_median_cut(
             colors.accessor<scalar_t, 2>(), color_id_map.accessor<int32_t, 1>(),
             order, 0, data.size(0), color_idx, comp);
     });
-    return std::tuple<torch::Tensor, torch::Tensor>(colors, color_id_map);
+    return std::template tuple<torch::Tensor, torch::Tensor>(colors,
+                                                             color_id_map);
 }

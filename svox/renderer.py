@@ -126,6 +126,8 @@ class VolumeRenderer(nn.Module):
         ):
         """
         Construct volume renderer associated with given N^3 tree.
+        You can construct multiple renderer instances for the same tree;
+        the renderer class only stores configurations and no persistent tensors.
 
         The renderer traces rays with origins/dirs within the octree boundaries,
         detection ray-voxel intersections. The color and density within
@@ -148,6 +150,9 @@ class VolumeRenderer(nn.Module):
         :param max_comp: maximum SH/SG component to render, -1=last.
                          Set :code:`min_comp = max_comp` to render a particular
                          component. Default means all.
+                         *Tip:* If you set :code:`min_comp > max_comp`,
+                         the renderer will render all colors as 0.5 luminosity gray.
+                         This is still differentiable and be used to implement a mask loss.
         :param density_softplus: if true, applies :math:`\\log(1 + \\exp(sigma - 1))`.
                                  **Mind the shift -1!** (from mip-NeRF).
                                  Please note softplus will NOT be compatible with volrend,
@@ -185,7 +190,8 @@ class VolumeRenderer(nn.Module):
         """
         Render a batch of rays. Differentiable.
 
-        :param rays: namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)
+        :param rays: namedtuple :code:`svox.Rays` of origins
+                     :code:`(B, 3)`, dirs :code:`(B, 3):, viewdirs :code:`(B, 3)`
         :param cuda: whether to use CUDA kernel if available. If false,
                      uses only PyTorch version. *Only True supported right now*
         :param fast: if True, enables faster evaluation, potentially leading
@@ -197,21 +203,20 @@ class VolumeRenderer(nn.Module):
                 or :code:`(tree.data_dim - 1) / tree.data_format.basis_dim` else.
         """
         if not cuda or _C is None or not self.tree.data.is_cuda:
-            assert False  # Not supported in current version, use CUDA kernel
-            warn("Using slow volume rendering")
+            assert self.data_format.format in [DataFormat.RGBA, DataFormat.SH], \
+                 "Unsupported data format for slow volume rendering"
+            warn("Using slow volume rendering, should only be used for debugging")
             def dda_unit(cen, invdir):
                 """
                 voxel aabb ray tracing step
-
                 :param cen: jnp.ndarray [B, 3] center
                 :param invdir: jnp.ndarray [B, 3] 1/dir
-
                 :return: tmin jnp.ndarray [B] at least 0;
                          tmax jnp.ndarray [B]
                 """
                 B = invdir.shape[0]
-                tmin = torch.zeros((B,), device=cen.device)
-                tmax = torch.full((B,), fill_value=1e9, device=cen.device)
+                tmin = torch.zeros((B,), dtype=cen.dtype, device=cen.device)
+                tmax = torch.full((B,), fill_value=1e9, dtype=cen.dtype, device=cen.device)
                 for i in range(3):
                     t1 = -cen[..., i] * invdir[..., i]
                     t2 = t1 + invdir[..., i]
@@ -226,8 +231,10 @@ class VolumeRenderer(nn.Module):
             dirs /= torch.norm(dirs, dim=-1, keepdim=True)
 
             sh_mult = None
-            if self.data_format.format != DataFormat.RGBA:
-                sh_mult = maybe_eval_basis(self.data_format.basis_dim, viewdirs)[:, None]
+            if self.data_format.format == DataFormat.SH:
+                from svox import sh
+                sh_order = int(self.data_format.basis_dim ** 0.5) - 1
+                sh_mult = sh.eval_sh_bases(sh_order, viewdirs)[:, None]
 
             invdirs = 1.0 / (dirs + 1e-9)
             t, tmax = dda_unit(origins, invdirs)
@@ -235,7 +242,7 @@ class VolumeRenderer(nn.Module):
             out_rgb = torch.zeros((B, 3), device=origins.device)
 
             good_indices = torch.arange(B, device=origins.device)
-            delta_scale = 1.0 / self.tree.invradius
+            delta_scale = (dirs / self.tree.invradius[None]).norm(dim=1)
             while good_indices.numel() > 0:
                 pos = origins + t[:, None] * dirs
                 treeview = self.tree[LocalIndex(pos)]
@@ -247,7 +254,7 @@ class VolumeRenderer(nn.Module):
                 subcube_tmin, subcube_tmax = dda_unit(pos_t, invdirs)
 
                 delta_t = (subcube_tmax - subcube_tmin) * cube_sz + self.step_size
-                att = torch.exp(- delta_t * torch.relu(rgba[..., -1]) * delta_scale)
+                att = torch.exp(- delta_t * torch.relu(rgba[..., -1]) * delta_scale[good_indices])
                 weight = light_intensity[good_indices] * (1.0 - att)
                 rgb = rgba[:, :-1]
                 if self.data_format.format != DataFormat.RGBA:
@@ -262,7 +269,6 @@ class VolumeRenderer(nn.Module):
                 light_intensity[good_indices] *= att
                 t += delta_t
 
-
                 mask = t < tmax
                 good_indices = good_indices[mask]
                 origins = origins[mask]
@@ -272,15 +278,12 @@ class VolumeRenderer(nn.Module):
                 if sh_mult is not None:
                     sh_mult = sh_mult[mask]
                 tmax = tmax[mask]
-            out_rgb += self.background_brightness * light_intensity[:, None]
-            return out_rgb
-        else:
-            return _VolumeRenderFunction.apply(
-                self.tree.data,
-                self.tree._spec(),
-                _rays_spec_from_rays(rays),
-                self._get_options(fast)
-            )
+        return _VolumeRenderFunction.apply(
+            self.tree.data,
+            self.tree._spec(),
+            _rays_spec_from_rays(rays),
+            self._get_options(fast)
+        )
 
     def render_persp(self, c2w, width=800, height=800, fx=1111.111, fy=None,
             cuda=True, fast=False):
@@ -303,43 +306,87 @@ class VolumeRenderer(nn.Module):
                 or :code:`(tree.data_dim - 1) / tree.data_format.basis_dim` else.
 
         """
+        if not cuda or _C is None or not self.tree.data.is_cuda:
+            return self(VolumeRenderer.persp_rays(c2w, width, height, fx, fy),
+                        cuda=False, fast=fast)
         if fy is None:
             fy = fx
+        return _VolumeRenderImageFunction.apply(
+            self.tree.data,
+            self.tree._spec(),
+            _make_camera_spec(c2w.to(dtype=self.tree.data.dtype),
+                              width, height, fx, fy),
+            self._get_options(fast)
+        )
 
-        if not cuda or _C is None or not self.tree.data.is_cuda:
-            assert False  # Not supported in current version, use CUDA kernel
-            origins = c2w[None, :3, 3].expand(height * width, -1)
-            yy, xx = torch.meshgrid(
-                torch.arange(height, dtype=torch.float32, device=c2w.device),
-                torch.arange(width, dtype=torch.float32, device=c2w.device),
-            )
-            xx = (xx - width * 0.5) / float(fx)
-            yy = (yy - height * 0.5) / float(fy)
-            zz = torch.ones_like(xx)
-            dirs = torch.stack((xx, -yy, -zz), dim=-1)
-            dirs /= torch.norm(dirs, dim=-1, keepdim=True)
-            dirs = dirs.reshape(-1, 3)
-            del xx, yy, zz
-            dirs = torch.matmul(c2w[None, :3, :3], dirs[..., None])[..., 0]
-            vdirs = dirs
-            if self.ndc_config is not None:
-                origins, dirs = convert_to_ndc(origins, dirs, self.ndc_config.focal,
-                        self.ndc_config.width, self.ndc_config.height)
-            rays = {
-                'origins': origins,
-                'dirs': dirs,
-                'viewdirs': vdirs
-            }
-            rgb = self(rays, cuda=False, fast=fast)
-            return rgb.reshape(height, width, -1)
-        else:
-            return _VolumeRenderImageFunction.apply(
-                self.tree.data,
-                self.tree._spec(),
-                _make_camera_spec(c2w.to(dtype=self.tree.data.dtype),
-                                  width, height, fx, fy),
-                self._get_options(fast)
-            )
+    def se_grad(self, rays : Rays, colors):
+        """
+        Returns rendered color + gradient and Hessian diagonal of the total
+        squared error:
+        :math:`\\frac{1}{2} \\sum_{r \\in \\mathcal{R}} (\\hat{C}(r) - C(r))^2`
+        where :math:`\\hat{C}(r)` is computed from the ray and
+        :math:`C(r)` comes from the provided tensor :code:`colors`.
+        This is useful for diagonal NNLS methods for scaling step sizes.
+        Note currently the Hessian is actually the squared norm of Jacobian rows
+        as in Gauss-Newton algorithms.
+        
+        The tree's rendered output dimension (rgb_dim) cannot 
+        be greater than 4 (this is almost always true, don't need to worry).
+
+        :param rays: namedtuple :code:`svox.Rays` of origins
+                     :code:`(B, 3)`, dirs :code:`(B, 3):, viewdirs :code:`(B, 3)`
+        :param colors: torch.Tensor :code:`(B, 3)` reference colors
+
+        :return: :code:`colors (B, rgb_dim), grad (shape of tree.data),
+                               diag_hessian (shape of tree.data)`
+        """
+        if _C is None or not self.tree.data.is_cuda:
+            assert False, "Not supported in current version, use CUDA kernel"
+        tree = self.tree._spec()
+        rays_spec = _rays_spec_from_rays(rays)
+        opt = self._get_options(False)
+        return _C.se_grad(tree, rays_spec, colors, opt)
+
+    @staticmethod
+    def persp_rays(c2w, width=800, height=800, fx=1111.111, fy=None):
+        """
+        Generate perspective camera rays in row major order, then
+        usable for renderer's forward method.
+        *NDC is not supported currently.*
+
+        :param c2w: torch.Tensor (3, 4) or (4, 4) camera pose matrix (c2w)
+        :param width: int output image width
+        :param height: int output image height
+        :param fx: float output image focal length (x)
+        :param fy: float output image focal length (y), if not specified uses fx
+
+        :return: rays namedtuple svox.Rays of origins
+                     :code:`(H*W, 3)`, dirs :code:`(H*W, 3):, viewdirs :code:`(H*W, 3)`,
+                     where H = W.
+
+        """
+        if fy is None:
+            fy = fx
+        origins = c2w[None, :3, 3].expand(height * width, -1).contiguous()
+        yy, xx = torch.meshgrid(
+            torch.arange(height, dtype=torch.float64, device=c2w.device),
+            torch.arange(width, dtype=torch.float64, device=c2w.device),
+        )
+        xx = (xx - width * 0.5) / float(fx)
+        yy = (yy - height * 0.5) / float(fy)
+        zz = torch.ones_like(xx)
+        dirs = torch.stack((xx, -yy, -zz), dim=-1)
+        dirs /= torch.norm(dirs, dim=-1, keepdim=True)
+        dirs = dirs.reshape(-1, 3)
+        del xx, yy, zz
+        dirs = torch.matmul(c2w[None, :3, :3].double(), dirs[..., None])[..., 0].float()
+        vdirs = dirs
+
+        return Rays(
+            origins=origins,
+            dirs=dirs,
+            viewdirs=vdirs
+        )
 
     @property
     def data_format(self):

@@ -83,9 +83,8 @@ __device__ __constant__ const float C4[] = {
 };
 
 
-#define _SOFTPLUS_M1(x) (logf(1 + expf(x - 1)))
-#define _SIGMOID(x) (1 / (1 + expf(-x)))
-#define _D_SOFTPLUS_M1(x) (1 / (1 + expf(1 - x)))
+#define _SOFTPLUS_M1(x) (logf(1 + expf((x) - 1)))
+#define _SIGMOID(x) (1 / (1 + expf(-(x))))
 
 template<typename scalar_t>
 __host__ __device__ __inline__ static scalar_t _norm(
@@ -219,7 +218,6 @@ __device__ __inline__ void _dda_unit(
         *tmax = min(*tmax, max(t1, t2));
     }
 }
-
 
 template <typename scalar_t>
 __device__ __inline__ void trace_ray(
@@ -389,10 +387,10 @@ __device__ __inline__ void trace_ray_backward(
                                 tmp += basis_fn[i] * tree_val[off + i];
                             }
                             const scalar_t sigmoid = _SIGMOID(tmp);
-                            const scalar_t grad_sigmoid = sigmoid * (1.0 - sigmoid);
+                            const scalar_t tmp2 = weight * sigmoid * (1.0 - sigmoid) *
+                                                 grad_output[t] * d_rgb_pad;
                             for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
-                                const scalar_t toadd = weight * basis_fn[i] *
-                                    grad_sigmoid * grad_output[t] * d_rgb_pad;
+                                const scalar_t toadd = basis_fn[i] * tmp2;
                                 atomicAdd(&grad_tree_val[off + i],
                                         toadd);
                             }
@@ -468,12 +466,250 @@ __device__ __inline__ void trace_ray_backward(
                             delta_t * delta_scale * (
                                 total_color * light_intensity - accum)
                                 *  (opt.density_softplus ?
-                                    _D_SOFTPLUS_M1(raw_sigma)
+                                    _SIGMOID(raw_sigma - 1)
                                     : 1)
                             );
                 }
                 t += delta_t;
             }
+        }
+    }
+}  // trace_ray_backward
+
+template <typename scalar_t>
+__device__ __inline__ void trace_ray_se_grad_hess(
+    PackedTreeSpec<scalar_t>& __restrict__ tree,
+    SingleRaySpec<scalar_t> ray,
+    RenderOptions& __restrict__ opt,
+    torch::TensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, int32_t> color_ref,
+    torch::TensorAccessor<scalar_t, 1, torch::RestrictPtrTraits, int32_t> color_out,
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits>
+        grad_data_out,
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits>
+        hessdiag_out) {
+    const scalar_t delta_scale = _get_delta_scale(tree.scaling, ray.dir);
+
+    scalar_t tmin, tmax;
+    scalar_t invdir[3];
+    const int tree_N = tree.child.size(1);
+    const int data_dim = tree.data.size(4);
+    const int out_data_dim = color_out.size(0);
+
+#pragma unroll
+    for (int i = 0; i < 3; ++i) {
+        invdir[i] = 1.0 / (ray.dir[i] + 1e-9);
+    }
+    _dda_unit(ray.origin, invdir, &tmin, &tmax);
+
+    if (tmax < 0 || tmin > tmax) {
+        // Ray doesn't hit box
+        for (int j = 0; j < out_data_dim; ++j) {
+            color_out[j] = opt.background_brightness;
+        }
+        return;
+    } else {
+        scalar_t pos[3];
+        scalar_t basis_fn[25];
+        maybe_precalc_basis<scalar_t>(opt.format, opt.basis_dim, tree.extra_data,
+                ray.vdir, basis_fn);
+
+        const scalar_t d_rgb_pad = 1 + 2 * opt.rgb_padding;
+
+        // PASS 1 - compute residual (trace_ray_se_grad_hess)
+        {
+            scalar_t light_intensity = 1.f, t = tmin, cube_sz;
+            while (t < tmax) {
+                for (int j = 0; j < 3; ++j) {
+                    pos[j] = ray.origin[j] + t * ray.dir[j];
+                }
+
+                scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data, tree.child,
+                        pos, &cube_sz, nullptr);
+
+                scalar_t att;
+                scalar_t subcube_tmin, subcube_tmax;
+                _dda_unit(pos, invdir, &subcube_tmin, &subcube_tmax);
+
+                const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
+                const scalar_t delta_t = t_subcube + opt.step_size;
+                scalar_t sigma = tree_val[data_dim - 1];
+                if (opt.density_softplus) sigma = _SOFTPLUS_M1(sigma);
+                if (sigma > 0.0f) {
+                    att = expf(-delta_t * delta_scale * sigma);
+                    const scalar_t weight = light_intensity * (1.f - att);
+
+                    if (opt.format != FORMAT_RGBA) {
+                        for (int t = 0; t < out_data_dim; ++ t) {
+                            int off = t * opt.basis_dim;
+                            scalar_t tmp = 0.0;
+                            for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
+                                tmp += basis_fn[i] * tree_val[off + i];
+                            }
+                            color_out[t] += weight * (_SIGMOID(tmp) * d_rgb_pad - opt.rgb_padding);
+                        }
+                    } else {
+                        for (int j = 0; j < out_data_dim; ++j) {
+                            color_out[j] += weight * (_SIGMOID(tree_val[j]) *
+                                    d_rgb_pad - opt.rgb_padding);
+                        }
+                    }
+                    light_intensity *= att;
+                }
+                t += delta_t;
+            }
+            // Add background intensity & color -> residual
+            for (int j = 0; j < out_data_dim; ++j) {
+                color_out[j] += light_intensity * opt.background_brightness - color_ref[j];
+            }
+        }
+
+        // PASS 2 - compute RGB gradient & suffix (trace_ray_se_grad_hess)
+        scalar_t color_accum[4] = {0, 0, 0, 0};
+        {
+            scalar_t light_intensity = 1.f, t = tmin, cube_sz;
+            while (t < tmax) {
+                for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
+
+                const scalar_t* tree_val = query_single_from_root<scalar_t>(
+                        tree.data, tree.child, pos, &cube_sz);
+                // Reuse offset on gradient
+                const int64_t curr_leaf_offset = tree_val - tree.data.data();
+                scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
+                scalar_t* hessdiag_tree_val = hessdiag_out.data() + curr_leaf_offset;
+
+                scalar_t att;
+                scalar_t subcube_tmin, subcube_tmax;
+                _dda_unit(pos, invdir, &subcube_tmin, &subcube_tmax);
+
+                const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
+                const scalar_t delta_t = t_subcube + opt.step_size;
+                scalar_t sigma = tree_val[data_dim - 1];
+                if (opt.density_softplus) sigma = _SOFTPLUS_M1(sigma);
+                if (sigma > 0.0) {
+                    att = expf(-delta_t * sigma * delta_scale);
+                    const scalar_t weight = light_intensity * (1.f - att);
+
+                    if (opt.format != FORMAT_RGBA) {
+                        for (int t = 0; t < out_data_dim; ++ t) {
+                            int off = t * opt.basis_dim;
+                            scalar_t tmp = 0.0;
+                            for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
+                                tmp += basis_fn[i] * tree_val[off + i];
+                            }
+                            const scalar_t sigmoid = _SIGMOID(tmp);
+                            const scalar_t grad_ci = weight * sigmoid * (1.0 - sigmoid) *
+                                                  d_rgb_pad;
+                            // const scalar_t d2_term =
+                            //     (1.f - 2.f * sigmoid) * color_out[t];
+                            for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
+                                const scalar_t grad_wi = basis_fn[i] * grad_ci;
+                                atomicAdd(&grad_tree_val[off + i], grad_wi * color_out[t]);
+                                atomicAdd(&hessdiag_tree_val[off + i],
+                                        // grad_wi * basis_fn[i] * (grad_ci +
+                                        //         d2_term)                   // Newton
+                                        grad_wi * grad_wi                     // Gauss-Newton
+                                    );
+                            }
+                            const scalar_t color_j = sigmoid * d_rgb_pad - opt.rgb_padding;
+                            color_accum[t] += weight * color_j;
+                        }
+                    } else {
+                        for (int j = 0; j < out_data_dim; ++j) {
+                            const scalar_t sigmoid = _SIGMOID(tree_val[j]);
+                            const scalar_t grad_ci = weight * sigmoid * (
+                                    1.f - sigmoid) * d_rgb_pad;
+                            // const scalar_t d2_term = (1.f - 2.f * sigmoid) * color_out[j];
+                            atomicAdd(&grad_tree_val[j], grad_ci * color_out[j]);
+                            // Newton
+                            // atomicAdd(&hessdiag_tree_val[j], grad_ci * (grad_ci + d2_term));
+                            // Gauss-Newton
+                            atomicAdd(&hessdiag_tree_val[j], grad_ci * grad_ci);
+                            const scalar_t color_j = sigmoid * d_rgb_pad - opt.rgb_padding;
+                            color_accum[j] += weight * color_j;
+                        }
+                    }
+                    light_intensity *= att;
+                }
+                t += delta_t;
+            }
+            for (int j = 0; j < out_data_dim; ++j) {
+                color_accum[j] += light_intensity * opt.background_brightness;
+            }
+        }
+
+        // PASS 3 - finish computing sigma gradient (trace_ray_se_grad_hess)
+        {
+            scalar_t light_intensity = 1.f, t = tmin, cube_sz;
+            scalar_t color_curr[4];
+            while (t < tmax) {
+                for (int j = 0; j < 3; ++j) pos[j] = ray.origin[j] + t * ray.dir[j];
+                const scalar_t* tree_val = query_single_from_root<scalar_t>(tree.data,
+                        tree.child, pos, &cube_sz);
+                // Reuse offset on gradient
+                const int64_t curr_leaf_offset = tree_val - tree.data.data();
+                scalar_t* grad_tree_val = grad_data_out.data() + curr_leaf_offset;
+                scalar_t* hessdiag_tree_val = hessdiag_out.data() + curr_leaf_offset;
+
+                scalar_t att;
+                scalar_t subcube_tmin, subcube_tmax;
+                _dda_unit(pos, invdir, &subcube_tmin, &subcube_tmax);
+
+                const scalar_t t_subcube = (subcube_tmax - subcube_tmin) / cube_sz;
+                const scalar_t delta_t = t_subcube + opt.step_size;
+                scalar_t sigma = tree_val[data_dim - 1];
+                const scalar_t raw_sigma = sigma;
+                if (opt.density_softplus) sigma = _SOFTPLUS_M1(sigma);
+                if (sigma > 0.0) {
+                    att = expf(-delta_t * sigma * delta_scale);
+                    const scalar_t weight = light_intensity * (1.f - att);
+
+                    if (opt.format != FORMAT_RGBA) {
+                        for (int u = 0; u < out_data_dim; ++ u) {
+                            int off = u * opt.basis_dim;
+                            scalar_t tmp = 0.0;
+                            for (int i = opt.min_comp; i <= opt.max_comp; ++i) {
+                                tmp += basis_fn[i] * tree_val[off + i];
+                            }
+                            color_curr[u] = _SIGMOID(tmp) * d_rgb_pad - opt.rgb_padding;
+                            color_accum[u] -= weight * color_curr[u];
+                        }
+                    } else {
+                        for (int j = 0; j < out_data_dim; ++j) {
+                            color_curr[j] = _SIGMOID(tree_val[j]) * d_rgb_pad - opt.rgb_padding;
+                            color_accum[j] -= weight * color_curr[j];
+                        }
+                    }
+                    light_intensity *= att;
+                    for (int j = 0; j < out_data_dim; ++j) {
+                        const scalar_t grad_sigma = delta_t * delta_scale * (
+                                color_curr[j] * light_intensity - color_accum[j]);
+                        // Newton
+                        // const scalar_t grad2_sigma =
+                        //     grad_sigma * (grad_sigma - delta_t * delta_scale * color_out[j]);
+                        // Gauss-Newton
+                        const scalar_t grad2_sigma = grad_sigma * grad_sigma;
+                        if (opt.density_softplus) {
+                            const scalar_t sigmoid = _SIGMOID(raw_sigma - 1);
+                            const scalar_t d_sigmoid = sigmoid * (1.f - sigmoid);
+                            // FIXME not sure this works
+                            atomicAdd(&grad_tree_val[data_dim - 1], grad_sigma *
+                                    color_out[j] * sigmoid);
+                            atomicAdd(&hessdiag_tree_val[data_dim - 1],
+                                    grad2_sigma * sigmoid * sigmoid
+                                    + grad_sigma *  d_sigmoid);
+                        } else {
+                            atomicAdd(&grad_tree_val[data_dim - 1],
+                                    grad_sigma * color_out[j]);
+                            atomicAdd(&hessdiag_tree_val[data_dim - 1], grad2_sigma);
+                        }
+                    }
+                }
+                t += delta_t;
+            }
+        }
+        // Residual -> color
+        for (int j = 0; j < out_data_dim; ++j) {
+            color_out[j] += color_ref[j];
         }
     }
 }
@@ -605,6 +841,30 @@ __global__ void render_image_backward_kernel(
         SingleRaySpec<scalar_t>{origin, dir, vdir},
         opt,
         grad_data_out);
+}
+
+template <typename scalar_t>
+__global__ void se_grad_kernel(
+    PackedTreeSpec<scalar_t> tree,
+    PackedRaysSpec<scalar_t> rays,
+    RenderOptions opt,
+    torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> color_ref,
+    torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> color_out,
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits> grad_out,
+    torch::PackedTensorAccessor64<scalar_t, 5, torch::RestrictPtrTraits> hessdiag_out) {
+    CUDA_GET_THREAD_ID(tid, rays.origins.size(0));
+    scalar_t origin[3] = {rays.origins[tid][0], rays.origins[tid][1], rays.origins[tid][2]};
+    transform_coord<scalar_t>(origin, tree.offset, tree.scaling);
+    scalar_t dir[3] = {rays.dirs[tid][0], rays.dirs[tid][1], rays.dirs[tid][2]};
+
+    trace_ray_se_grad_hess<scalar_t>(
+        tree,
+        SingleRaySpec<scalar_t>{origin, dir, &rays.vdirs[tid][0]},
+        opt,
+        color_ref[tid],
+        color_out[tid],
+        grad_out,
+        hessdiag_out);
 }
 
 template <typename scalar_t>
@@ -817,6 +1077,36 @@ torch::Tensor volume_render_image_backward(TreeSpec& tree, CameraSpec& cam,
     });
     CUDA_CHECK_ERRORS;
     return result;
+}
+
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> se_grad(
+        TreeSpec& tree, RaysSpec& rays, torch::Tensor color, RenderOptions& opt) {
+    tree.check();
+    rays.check();
+    DEVICE_GUARD(tree.data);
+    CHECK_INPUT(color);
+
+    const auto Q = rays.origins.size(0);
+
+    auto_cuda_threads();
+    const int blocks = CUDA_N_BLOCKS_NEEDED(Q, cuda_n_threads);
+    int out_data_dim = get_out_data_dim(opt.format, opt.basis_dim, tree.data.size(4));
+    if (out_data_dim > 4) {
+        throw std::runtime_error("Tree's output dim cannot be > 4 for se_grad");
+    }
+    torch::Tensor result = torch::zeros({Q, out_data_dim}, rays.origins.options());
+    torch::Tensor grad = torch::zeros_like(tree.data);
+    torch::Tensor hessdiag = torch::zeros_like(tree.data);
+    AT_DISPATCH_FLOATING_TYPES(rays.origins.type(), __FUNCTION__, [&] {
+            device::se_grad_kernel<scalar_t><<<blocks, cuda_n_threads>>>(
+                    tree, rays, opt,
+                    color.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                    result.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
+                    grad.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>(),
+                    hessdiag.packed_accessor64<scalar_t, 5, torch::RestrictPtrTraits>());
+    });
+    CUDA_CHECK_ERRORS;
+    return std::template tuple<torch::Tensor, torch::Tensor, torch::Tensor>(result, grad, hessdiag);
 }
 
 std::vector<torch::Tensor> grid_weight_render(
