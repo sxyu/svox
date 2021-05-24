@@ -278,6 +278,8 @@ class VolumeRenderer(nn.Module):
                 if sh_mult is not None:
                     sh_mult = sh_mult[mask]
                 tmax = tmax[mask]
+            out_rgb += light_intensity * self.background_brightness
+            return out_rgb
         return _VolumeRenderFunction.apply(
             self.tree.data,
             self.tree._spec(),
