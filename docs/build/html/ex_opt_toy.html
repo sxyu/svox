@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Example: Optimization and expand &mdash; svox 0.2.31-dev documentation</title>
+  <title>Example: Optimization and expand &mdash; svox 0.2.32-dev documentation</title>
   
 
   
@@ -194,7 +194,7 @@ Slowly, the results get closer to the target vector.</p>
 <span class="n">ray_dir</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]],</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
 <span class="n">ray</span> <span class="o">=</span> <span class="n">svox</span><span class="o">.</span><span class="n">Rays</span><span class="p">(</span><span class="n">origins</span><span class="o">=</span><span class="n">ray_ori</span><span class="p">,</span> <span class="n">dirs</span><span class="o">=</span><span class="n">ray_dir</span><span class="p">,</span> <span class="n">viewdirs</span><span class="o">=</span><span class="n">ray_dir</span><span class="p">)</span>
 
-<span class="n">lr</span> <span class="o">=</span> <span class="mf">2.5</span>
+<span class="n">lr</span> <span class="o">=</span> <span class="mf">1e2</span>
 
 <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;GRADIENT DESC&#39;</span><span class="p">)</span>
 

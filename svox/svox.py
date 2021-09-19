@@ -28,8 +28,9 @@ Sparse voxel N^3 tree
 import os.path as osp
 import torch
 import numpy as np
+import math
 from torch import nn, autograd
-from svox.helpers import N3TreeView, DataFormat, _get_c_extension
+from svox.helpers import N3TreeView, DataFormat, LocalIndex, _get_c_extension
 from warnings import warn
 
 _C = _get_c_extension()
@@ -864,6 +865,38 @@ class N3Tree(nn.Module):
             np.savez(path, **data)
 
     @classmethod
+    def from_grid(cls, grid, *args, **kwargs):
+        """
+        Construct from a grid
+
+        :param grid: (D, D, D, data_dim)
+
+        """
+        D = grid.shape[0]
+        assert grid.ndim == 4 and grid.shape[1] == D and grid.shape[2] == D, \
+               "Grid must be a 4D array with first 3 dims equal"
+        logD = int(math.log2(D))
+        assert 2**logD == D, "Grid size must be power of 2"
+        kwargs['init_refine'] = logD - 1
+        tree = cls(*args, **kwargs)
+        tree.set_grid(grid)
+        return tree
+
+    def set_grid(self, grid):
+        """
+        Set current tree to grid.
+        Assumes the tree's resolution is less than the grid's reslution
+
+        :param grid: (D, D, D, data_dim)
+
+        """
+        D = grid.shape[0]
+        assert grid.ndim == 4 and grid.shape[1] == D and \
+               grid.shape[2] == D and grid.shape[-1] == self.data_dim
+        idx = gen_grid(D).reshape(-1, 3)
+        self[LocalIndex(idx)] = grid.reshape(-1, self.data_dim)
+
+    @classmethod
     def load(cls, path, device='cpu', dtype=torch.float32, map_location=None):
         """
         Load from npz file
@@ -1126,3 +1159,15 @@ class WeightAccumulator():
 
     def __call__(self):
         return self.tree.aux(self.weight_accum)
+
+def gen_grid(D):
+    """
+    Generate D^3 grid centers (coordinates in [0, 1]^3, xyz)
+
+    :param D: resolution
+    :return: (D, D, D, 3)
+    """
+    arr=(torch.arange(D) + 0.5) / D
+    X, Y, Z = torch.meshgrid(arr, arr, arr)
+    XYZ = torch.stack([X, Y, Z], -1)
+    return XYZ

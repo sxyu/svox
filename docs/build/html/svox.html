@@ -7,7 +7,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   
-  <title>Reference &mdash; svox 0.2.31-dev documentation</title>
+  <title>Reference &mdash; svox 0.2.32-dev documentation</title>
   
 
   
@@ -573,6 +573,29 @@ and may have bugs</p>
 </dd></dl>
 
 <dl class="py method">
+<dt id="svox.N3Tree.from_grid">
+<em class="property"><span class="pre">classmethod</span> </em><code class="sig-name descname"><span class="pre">from_grid</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">grid</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.from_grid" title="Permalink to this definition">¶</a></dt>
+<dd><p>Construct from a grid</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>grid</strong> – (D, D, D, data_dim)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.N3Tree.set_grid">
+<code class="sig-name descname"><span class="pre">set_grid</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">grid</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.set_grid" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set current tree to grid.
+Assumes the tree’s resolution is less than the grid’s reslution</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>grid</strong> – (D, D, D, data_dim)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt id="svox.N3Tree.load">
 <em class="property"><span class="pre">classmethod</span> </em><code class="sig-name descname"><span class="pre">load</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_location</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.N3Tree.load" title="Permalink to this definition">¶</a></dt>
 <dd><p>Load from npz file</p>
@@ -823,7 +846,9 @@ FIXME: inefficient</p>
 <dl class="py method">
 <dt id="svox.VolumeRenderer.__init__">
 <code class="sig-name descname"><span class="pre">__init__</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tree</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step_size</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.001</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">background_brightness</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ndc</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">Optional</span><span class="p"><span class="pre">[</span></span><span class="pre">svox.renderer.NDCConfig</span><span class="p"><span class="pre">]</span></span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_comp</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">int</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_comp</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">int</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">-</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">density_softplus</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">bool</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rgb_padding</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">float</span></span> <span class="o"><span class="pre">=</span></span> <span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.__init__" title="Permalink to this definition">¶</a></dt>
-<dd><p>Construct volume renderer associated with given N^3 tree.</p>
+<dd><p>Construct volume renderer associated with given N^3 tree.
+You can construct multiple renderer instances for the same tree;
+the renderer class only stores configurations and no persistent tensors.</p>
 <p>The renderer traces rays with origins/dirs within the octree boundaries,
 detection ray-voxel intersections. The color and density within
 each voxel is assumed constant, and no interpolation is performed.</p>
@@ -845,7 +870,10 @@ None = no NDC, use usual coordinates</p></li>
 <li><p><strong>min_comp</strong> – minimum SH/SG component to render.</p></li>
 <li><p><strong>max_comp</strong> – maximum SH/SG component to render, -1=last.
 Set <code class="code docutils literal notranslate"><span class="pre">min_comp</span> <span class="pre">=</span> <span class="pre">max_comp</span></code> to render a particular
-component. Default means all.</p></li>
+component. Default means all.
+<em>Tip:</em> If you set <code class="code docutils literal notranslate"><span class="pre">min_comp</span> <span class="pre">&gt;</span> <span class="pre">max_comp</span></code>,
+the renderer will render all colors as 0.5 luminosity gray.
+This is still differentiable and be used to implement a mask loss.</p></li>
 <li><p><strong>density_softplus</strong> – if true, applies <span class="math notranslate nohighlight">\(\log(1 + \exp(sigma - 1))\)</span>.
 <strong>Mind the shift -1!</strong> (from mip-NeRF).
 Please note softplus will NOT be compatible with volrend,
@@ -868,7 +896,8 @@ although most likely the effect is very small.
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>rays</strong> – namedtuple Rays of origins (B, 3), dirs (B, 3), viewdirs (B, 3)</p></li>
+<li><p><strong>rays</strong> – namedtuple <code class="code docutils literal notranslate"><span class="pre">svox.Rays</span></code> of origins
+<code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">3)</span></code>, dirs <code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">3):,</span> <span class="pre">viewdirs</span> <span class="pre">:code:`(B,</span> <span class="pre">3)</span></code></p></li>
 <li><p><strong>cuda</strong> – whether to use CUDA kernel if available. If false,
 uses only PyTorch version. <em>Only True supported right now</em></p></li>
 <li><p><strong>fast</strong> – if True, enables faster evaluation, potentially leading
@@ -907,6 +936,91 @@ to some loss of accuracy.</p></li>
 where <em>rgb_dim</em> is <code class="code docutils literal notranslate"><span class="pre">tree.data_dim</span> <span class="pre">-</span> <span class="pre">1</span></code> if
 <code class="code docutils literal notranslate"><span class="pre">data_format.format</span> <span class="pre">==</span> <span class="pre">DataFormat.RGBA</span></code>
 or <code class="code docutils literal notranslate"><span class="pre">(tree.data_dim</span> <span class="pre">-</span> <span class="pre">1)</span> <span class="pre">/</span> <span class="pre">tree.data_format.basis_dim</span></code> else.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.VolumeRenderer.se_grad">
+<code class="sig-name descname"><span class="pre">se_grad</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">rays</span></span><span class="p"><span class="pre">:</span></span> <span class="n"><span class="pre">svox.renderer.Rays</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">colors</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.se_grad" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns rendered color + gradient and Hessian diagonal of the total
+squared error:
+<span class="math notranslate nohighlight">\(\frac{1}{2} \sum_{r \in \mathcal{R}} (\hat{C}(r) - C(r))^2\)</span>
+where <span class="math notranslate nohighlight">\(\hat{C}(r)\)</span> is computed from the ray and
+<span class="math notranslate nohighlight">\(C(r)\)</span> comes from the provided tensor <code class="code docutils literal notranslate"><span class="pre">colors</span></code>.
+This is the arbitrary ray-batch version of <code class="code docutils literal notranslate"><span class="pre">se_grad</span></code>.
+This is useful for diagonal NNLS methods for scaling step sizes.
+Note currently the Hessian is actually the squared norm of Jacobian rows
+as in Gauss-Newton algorithms.</p>
+<p>The tree’s rendered output dimension (rgb_dim) cannot
+be greater than 4 (this is almost always true, don’t need to worry).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>rays</strong> – namedtuple <code class="code docutils literal notranslate"><span class="pre">svox.Rays</span></code> of origins
+<code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">3)</span></code>, dirs <code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">3):,</span> <span class="pre">viewdirs</span> <span class="pre">:code:`(B,</span> <span class="pre">3)</span></code></p></li>
+<li><p><strong>colors</strong> – torch.Tensor <code class="code docutils literal notranslate"><span class="pre">(B,</span> <span class="pre">3)</span></code> reference colors</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><code class="code docutils literal notranslate"><span class="pre">colors</span> <span class="pre">(B,</span> <span class="pre">rgb_dim),</span> <span class="pre">grad</span> <span class="pre">(shape</span> <span class="pre">of</span> <span class="pre">tree.data),</span>
+<span class="pre">diag_hessian</span> <span class="pre">(shape</span> <span class="pre">of</span> <span class="pre">tree.data)</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.VolumeRenderer.se_grad_persp">
+<code class="sig-name descname"><span class="pre">se_grad_persp</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">c2w</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">colors</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">800</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">800</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fx</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1111.111</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.se_grad_persp" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns rendered color + gradient and Hessian diagonal of the total
+squared error:
+<span class="math notranslate nohighlight">\(\frac{1}{2} \sum_{r \in \mathcal{R}} (\hat{C}(r) - C(r))^2\)</span>
+where <span class="math notranslate nohighlight">\(\hat{C}(r)\)</span> is computed from the ray and
+<span class="math notranslate nohighlight">\(C(r)\)</span> comes from the provided tensor <code class="code docutils literal notranslate"><span class="pre">colors</span></code>.
+This is the image-batch version of <code class="code docutils literal notranslate"><span class="pre">se_grad</span></code>.
+This is useful for diagonal NNLS methods for scaling step sizes.
+Note currently the Hessian is actually the squared norm of Jacobian rows
+as in Gauss-Newton algorithms.</p>
+<p>The tree’s rendered output dimension (rgb_dim) cannot
+be greater than 4 (this is almost always true, don’t need to worry).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>c2w</strong> – torch.Tensor (3, 4) or (4, 4) camera pose matrix (c2w)</p></li>
+<li><p><strong>colors</strong> – torch.Tensor <code class="code docutils literal notranslate"><span class="pre">(H,</span> <span class="pre">W,</span> <span class="pre">3)</span></code> reference colors</p></li>
+<li><p><strong>width</strong> – int output image width</p></li>
+<li><p><strong>height</strong> – int output image height</p></li>
+<li><p><strong>fx</strong> – float output image focal length (x)</p></li>
+<li><p><strong>fy</strong> – float output image focal length (y), if not specified uses fx</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><code class="code docutils literal notranslate"><span class="pre">colors</span> <span class="pre">(H,</span> <span class="pre">W,</span> <span class="pre">rgb_dim),</span> <span class="pre">grad</span> <span class="pre">(shape</span> <span class="pre">of</span> <span class="pre">tree.data),</span>
+<span class="pre">diag_hessian</span> <span class="pre">(shape</span> <span class="pre">of</span> <span class="pre">tree.data)</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="svox.VolumeRenderer.persp_rays">
+<em class="property"><span class="pre">static</span> </em><code class="sig-name descname"><span class="pre">persp_rays</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">c2w</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">800</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">height</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">800</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fx</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1111.111</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#svox.VolumeRenderer.persp_rays" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate perspective camera rays in row major order, then
+usable for renderer’s forward method.
+<em>NDC is not supported currently.</em></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>c2w</strong> – torch.Tensor (3, 4) or (4, 4) camera pose matrix (c2w)</p></li>
+<li><p><strong>width</strong> – int output image width</p></li>
+<li><p><strong>height</strong> – int output image height</p></li>
+<li><p><strong>fx</strong> – float output image focal length (x)</p></li>
+<li><p><strong>fy</strong> – float output image focal length (y), if not specified uses fx</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>rays namedtuple svox.Rays of origins
+<code class="code docutils literal notranslate"><span class="pre">(H*W,</span> <span class="pre">3)</span></code>, dirs <code class="code docutils literal notranslate"><span class="pre">(H*W,</span> <span class="pre">3):,</span> <span class="pre">viewdirs</span> <span class="pre">:code:`(H*W,</span> <span class="pre">3)</span></code>,
+where H = W.</p>
 </dd>
 </dl>
 </dd></dl>

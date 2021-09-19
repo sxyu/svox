@@ -29,9 +29,6 @@ class N3TreeView:
         self.tree = tree
         local = False
         self.single_key = False
-        if isinstance(key, LocalIndex):
-            key = key.val
-            local = True
         if isinstance(key, tuple) and len(key) >= 3:
             # Handle tree[x, y, z[, c]]
             main_key = torch.tensor(key[:3], dtype=tree.data.dtype,
@@ -41,6 +38,9 @@ class N3TreeView:
             else:
                 key = main_key
         leaf_key = key[0] if isinstance(key, tuple) else key
+        if isinstance(leaf_key, LocalIndex):
+            leaf_key = leaf_key.val
+            local = True
         if torch.is_tensor(leaf_key) and leaf_key.ndim == 2 and leaf_key.shape[1] == 3:
             # Handle tree[P[, c]] where P is a (B, 3) matrix of 3D points
             if leaf_key.dtype != tree.data.dtype:
