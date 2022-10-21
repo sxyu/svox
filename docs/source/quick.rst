@@ -5,7 +5,7 @@ Quick Guide
 
 Below I give a quick overview of some core functionality of svox to help get you started.
 Please see :ref:`svox` for detailed per-method documentation.
-To install the library, simply use :code:`pip install sxox`; you would of course need
+To install the library, simply use :code:`pip install svox`; you would of course need
 to install PyTorch first.
 You will also need the CUDA runtime to compile the CUDA extension;
 while the library works without the CUDA extension, it is very slow, and will emit a warning the
